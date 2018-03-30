@@ -1,14 +1,36 @@
 /****************************************************************************************************
  * Libs
+ *
+ * Twilio Dependencies:
+ * ----------------------------------------------
+ * |    Name              | Version             |
+ * ----------------------------------------------
+ * | •  jquery            | 3.3.1               |
+ * | •  lodash            | 4.17.4              |
+ * | •  twilio            | 3.6.3               |
+ * | •  moment            | 2.21.0              |
+ * | •  xmlhttprequest    | 1.8.0               |
+ * | •  util              | 0.10.3              |
+ * | •  fs                | 0.0.1-security      |
+ * | •  xmldom            | 0.1.27              |
+ * | •  weather-js        | 2.0.0               |
+ * ----------------------------------------------
+ *
  ****************************************************************************************************/
 var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 var xhr = new XMLHttpRequest();
+var moment = require('moment');
+var weather = require('weather-js');
+var i_exec = 0;
 
 /****************************************************************************************************
  * Main
  ****************************************************************************************************/
 exports.handler = function(context, event, callback) {
-
+    
+    i_exec++;
+    console.log("Call #" + i_exec);
+    
     // Prepare markup
     let twiml = new Twilio.twiml.MessagingResponse();
 
@@ -31,33 +53,48 @@ exports.handler = function(context, event, callback) {
             // Download the CSV file and analyze it
             Papa.parse(url_schedule, {
                 download: true,
+                header: true,
                 complete: function(results, file) {
                     
-                    // Once completed, parse the first result
+                    // Once completed, parse the results
                     console.log("Parsing complete:", results, file);
                     let obj_results;
-                    let arr_results = [];
-                    let i = 0;
-                    results.data.forEach((d) => {
-                        obj_results = {};
-                        obj_results.date = d[0];
-                        obj_results.hour = d[1];
-                        obj_results.location = d[2];
-                        obj_results.status = d[3];
-
-                        arr_results[i] = obj_results;
-                        i++;
-                    });
-
-                    let upcoming = arr_results[1];
+                    let dateTime;
                     
-                    // Write the message and send it
-                    twiml.message(
-                        "Next practice:\n" +
-                        "• " + upcoming.date + "\n" +
-                        "• " + upcoming.hour + "\n" +
-                        "• " + upcoming.location);
-                    callback(null, twiml);
+                    // Get the next practice time
+                    results.data.some(function(d) {
+                        obj_results = {};
+                        dateTime = d.Date + " " + d.Hour;
+                        obj_results.dateTime = moment(dateTime);
+                        obj_results.location = d.Location;
+                        obj_results.state = d.State;
+                        
+                        return moment().utcOffset('-0400').isSameOrBefore(obj_results.dateTime);
+                    });
+                    
+                    // Weather info
+                    weather.find({search: 'Montreal, QC', degreeType: 'C'}, function(err, result) {
+                        if(err) console.log(err);
+                        
+                        let weather_info;
+                        result[0].forecast.forEach((d) => {
+                            if(obj_results.dateTime.format("YYYY-MM-D") === d.date) {
+                                weather_info = d.low + " ~ " + d.high + "°C, " + d.precip + "%, " + d.skytextday;
+                            }
+                        });
+                        
+                        // Write the message and send it
+                        console.log(obj_results);
+                        twiml.message(
+                            "Next practice:\n" +
+                            "• " + obj_results.dateTime.format("dddd, MMMM Do") + "\n" +
+                            "• " + obj_results.dateTime.format("h:mm a") + "\n" +
+                            "• " + obj_results.location + "\n" +
+                            "• " + weather_info
+                            );
+                            
+                        callback(null, twiml);
+                    });
                 }
             });
             break;
