@@ -1,21 +1,37 @@
 /****************************************************************************************************
+ *                  Environmental Variables
+ * --------------------------------------------------------------------------
+ * |    Key                     | Value                                     |
+ * --------------------------------------------------------------------------
+ * | •  BOT_NAME                | Name of the bot                           |
+ * | •  CITY                    | Weather forecast                          |
+ * | •  DEGREE_TYPE             | C or F                                    |
+ * | •  GOOGLE_SHEETS_PID       | -                                         |
+ * | •  GOOGLE_SHEETS_QUERY     | -                                         |
+ * | •  GOOGLE_SHEETS_URL       | Published URL of Google Sheets in CSV     |
+ * | •  UTC_OFFSET              | Timezone offset to correct server time    |
+ * --------------------------------------------------------------------------
+ ****************************************************************************************************/
+ 
+/****************************************************************************************************
+ *                          Dependencies
+ * --------------------------------------------------------------------------
+ * |    Name                    | Version                                   |
+ * --------------------------------------------------------------------------
+ * | •  jquery                  | 3.3.1                                     |
+ * | •  lodash                  | 4.17.4                                    |
+ * | •  twilio                  | 3.6.3                                     |
+ * | •  moment                  | 2.21.0                                    |
+ * | •  xmlhttprequest          | 1.8.0                                     |
+ * | •  util                    | 0.10.3                                    |
+ * | •  fs                      | 0.0.1-security                            |
+ * | •  xmldom                  | 0.1.27                                    |
+ * | •  weather-js              | 2.0.0                                     |
+ * --------------------------------------------------------------------------
+ ****************************************************************************************************/
+ 
+/****************************************************************************************************
  * Libs
- *
- * Twilio Dependencies:
- * ----------------------------------------------
- * |    Name              | Version             |
- * ----------------------------------------------
- * | •  jquery            | 3.3.1               |
- * | •  lodash            | 4.17.4              |
- * | •  twilio            | 3.6.3               |
- * | •  moment            | 2.21.0              |
- * | •  xmlhttprequest    | 1.8.0               |
- * | •  util              | 0.10.3              |
- * | •  fs                | 0.0.1-security      |
- * | •  xmldom            | 0.1.27              |
- * | •  weather-js        | 2.0.0               |
- * ----------------------------------------------
- *
  ****************************************************************************************************/
 var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 var xhr = new XMLHttpRequest();
@@ -54,6 +70,7 @@ exports.handler = function(context, event, callback) {
             Papa.parse(url_schedule, {
                 download: true,
                 header: true,
+                skipEmptyLines: true,
                 complete: function(results, file) {
                     
                     // Once completed, parse the results
@@ -69,30 +86,44 @@ exports.handler = function(context, event, callback) {
                         obj_results.location = d.Location;
                         obj_results.state = d.State;
                         
-                        return moment().utcOffset('-0400').isSameOrBefore(obj_results.dateTime);
+                        return moment().utcOffset(context.UTC_OFFSET).isSameOrBefore(obj_results.dateTime);
                     });
                     
+                    console.log(obj_results);
+                    
                     // Weather info
-                    weather.find({search: 'Montreal, QC', degreeType: 'C'}, function(err, result) {
+                    weather.find({search: context.CITY, degreeType: context.DEGREE_TYPE}, function(err, result) {
                         if(err) console.log(err);
                         
                         let weather_info;
                         result[0].forecast.forEach((d) => {
                             if(obj_results.dateTime.format("YYYY-MM-D") === d.date) {
-                                weather_info = d.low + " ~ " + d.high + "°C, " + d.precip + "%, " + d.skytextday;
+                                weather_info = 
+                                    d.low + 
+                                    " ~ " + 
+                                    d.high + 
+                                    "°" + 
+                                    context.DEGREE_TYPE + 
+                                    ", " + 
+                                    d.precip + 
+                                    "%, " + 
+                                    d.skytextday;
                             }
                         });
                         
-                        // Write the message and send it
-                        console.log(obj_results);
-                        twiml.message(
-                            "Next practice:\n" +
+                        // Build the message
+                        let message = "Next practice:\n" +
                             "• " + obj_results.dateTime.format("dddd, MMMM Do") + "\n" +
                             "• " + obj_results.dateTime.format("h:mm a") + "\n" +
-                            "• " + obj_results.location + "\n" +
-                            "• " + weather_info
-                            );
+                            "• " + obj_results.location;
                             
+                        if(weather_info) {
+                            message = message + "\n" +
+                                "• " + weather_info;
+                        }
+                        
+                        // Send
+                        twiml.message(message);
                         callback(null, twiml);
                     });
                 }
@@ -106,7 +137,7 @@ exports.handler = function(context, event, callback) {
         default:
             // Default response -- help section
             twiml.message(
-                "Welcome to Beast Bot!\n" +
+                "Welcome to " + context.BOT_NAME + "!\n" +
                 "The available commands are:\n" +
                 "• 'S' for 'S'chedule;\n" +
                 "• 'L' for 'L'ate.");
