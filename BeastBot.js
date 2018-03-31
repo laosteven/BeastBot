@@ -46,21 +46,31 @@ var nb_sched_req = 0;
 var nb_late_req = 0;
 var nb_help_req = 0;
 var nb_secr_req = 0;
+var history = [];
 
 /****************************************************************************************************
  * Main
  ****************************************************************************************************/
 exports.handler = function (context, event, callback) {
 
-    // Get full info
-    console.log(context);
-    console.log(context.getTwilioClient());
-    console.log(event);
-    console.log(callback);
-
     // Count requests for statistics
     nb_request++;
     console.log("Request #" + nb_request);
+
+    // Update history
+    history.push({
+        user: event.From,
+        command: event.Body,
+        time: moment().utcOffset(context.UTC_OFFSET).format("YYYY-MM-D HH:mm:ss")
+    });
+
+    // Show known last users
+    if (history.length > 5) {
+        console.log(history.splice(Math.max(history.length - 5, 1)));
+    }
+    else {
+        console.log(history);
+    }
 
     // Prepare markup
     let twiml = new Twilio.twiml.MessagingResponse();
@@ -71,6 +81,7 @@ exports.handler = function (context, event, callback) {
     // Categorize
     switch (body[0]) {
         case 's':
+
             // Schedule
             nb_sched_req++;
 
@@ -175,7 +186,9 @@ exports.handler = function (context, event, callback) {
 
                             // Send
                             twiml.message(message);
-                            twiml.message(obj_results.LocationLink);
+                            if (obj_results.LocationLink) {
+                                twiml.message(obj_results.LocationLink);
+                            }
                             callback(null, twiml);
                         });
                     }
@@ -188,6 +201,40 @@ exports.handler = function (context, event, callback) {
             break;
         case 'l':
             nb_late_req++;
+
+            // Because we're directly contacting the captains, we don't want 
+            // to send at irregular hours even if they have "Do not disturb".
+
+            // Verify busy hours
+            let current_hour = moment().utcOffset(context.UTC_OFFSET).hour();
+            if (current_hour < 9 || current_hour > 21) {
+                twiml.message("Your message was not sent to the captains (let them sleep!).\n" +
+                    "Please resend between 9AM to 9PM.");
+                callback(null, twiml);
+            }
+
+            // Avoid spams
+            // History must be cloned since `reverse()` will permanently change the array order
+            let temp_history = history.slice();
+            temp_history.reverse();
+
+            let i;
+            var curr_moment = moment(temp_history[0].time);
+            for (i = 1; i < temp_history.length; i++) {
+                if (temp_history[0].user === temp_history[i].user) {
+                    let prev_moment = moment(temp_history[i].time);
+                    let diff_sec = curr_moment.diff(prev_moment, 'seconds');
+                    if (diff_sec < 60) {
+                        let val = 60 - diff_sec;
+                        twiml.message("Please wait one minute.\n" +
+                            "You may send again in " + val + " second(s).");
+                        callback(null, twiml);
+                    }
+                    break;
+                }
+            }
+
+            // Verify if amount is [0;60]
             let amount = 0;
             if (body.length > 1 && body[1] && !isNaN(body[1]) && body[1] > 0 && body[1] <= 60) {
                 amount = body[1];
@@ -213,7 +260,7 @@ exports.handler = function (context, event, callback) {
             twiml.message("Welcome to " + context.BOT_NAME + "!\n" +
                 "The available commands are:\n" +
                 "• 'S' for 'S'chedule;\n" +
-                "• 'L' for 'L'ate.");
+                "• 'L' for 'L'ate (i.e.: \"L 15\" for 15mins late).");
             callback(null, twiml);
             break;
     }
