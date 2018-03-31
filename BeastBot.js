@@ -12,7 +12,7 @@
  * | •  UTC_OFFSET              | Timezone offset to correct server time    |
  * --------------------------------------------------------------------------
  ****************************************************************************************************/
- 
+
 /****************************************************************************************************
  *                          Dependencies
  * --------------------------------------------------------------------------
@@ -29,7 +29,7 @@
  * | •  weather-js              | 2.0.0                                     |
  * --------------------------------------------------------------------------
  ****************************************************************************************************/
- 
+
 /****************************************************************************************************
  * Libs
  ****************************************************************************************************/
@@ -37,107 +37,180 @@ var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 var xhr = new XMLHttpRequest();
 var moment = require('moment');
 var weather = require('weather-js');
-var i_exec = 0;
+
+/****************************************************************************************************
+ * Stats
+ ****************************************************************************************************/
+var nb_request = 0;
+var nb_sched_req = 0;
+var nb_late_req = 0;
+var nb_help_req = 0;
+var nb_secr_req = 0;
 
 /****************************************************************************************************
  * Main
  ****************************************************************************************************/
-exports.handler = function(context, event, callback) {
-    
-    i_exec++;
-    console.log("Call #" + i_exec);
-    
+exports.handler = function (context, event, callback) {
+
+    // Get full info
+    console.log(context);
+    console.log(context.getTwilioClient());
+    console.log(event);
+    console.log(callback);
+
+    // Count requests for statistics
+    nb_request++;
+    console.log("Request #" + nb_request);
+
     // Prepare markup
     let twiml = new Twilio.twiml.MessagingResponse();
 
     // Lowercase response
-    const body = event.Body ? event.Body.toLowerCase() : null;
+    const body = event.Body ? event.Body.toLowerCase().split(" ") : "";
 
     // Categorize
-    switch (body) {
+    switch (body[0]) {
         case 's':
             // Schedule
-            
+            nb_sched_req++;
+
             // The URL cannot be shortened: `runtime application timed out`
             // Environment key cannot be longer than 150 characters
-        	let url_schedule = 
-                context.GOOGLE_SHEETS_URL + 
-                context.GOOGLE_SHEETS_PID + 
+            let url_schedule =
+                context.GOOGLE_SHEETS_URL +
+                context.GOOGLE_SHEETS_PID +
                 context.GOOGLE_SHEETS_QUERY;
-        	console.log(url_schedule);
-            
+            console.log(url_schedule);
+
             // Download the CSV file and analyze it
             Papa.parse(url_schedule, {
                 download: true,
                 header: true,
                 skipEmptyLines: true,
-                complete: function(results, file) {
-                    
+                complete: function (results, file) {
+
                     // Once completed, parse the results
                     console.log("Parsing complete:", results, file);
                     let obj_results;
                     let dateTime;
-                    
+
                     // Get the next practice time
-                    results.data.some(function(d) {
+                    results.data.some(function (d) {
                         obj_results = {};
                         dateTime = d.Date + " " + d.Hour;
-                        obj_results.dateTime = moment(dateTime);
-                        obj_results.location = d.Location;
-                        obj_results.state = d.State;
-                        
-                        return moment().utcOffset(context.UTC_OFFSET).isSameOrBefore(obj_results.dateTime);
+                        obj_results.DateTime = moment(dateTime);
+                        obj_results.Location = d.Location;
+                        obj_results.LocationLink = d.LocationLink;
+                        obj_results.IsCancelled = d.IsCancelled;
+                        obj_results.Description = d.Description;
+
+                        return moment().utcOffset(context.UTC_OFFSET).isSameOrBefore(obj_results.DateTime);
                     });
-                    
+
                     console.log(obj_results);
-                    
+
                     // Weather info
-                    weather.find({search: context.CITY, degreeType: context.DEGREE_TYPE}, function(err, result) {
-                        if(err) console.log(err);
-                        
-                        let weather_info;
-                        result[0].forecast.forEach((d) => {
-                            if(obj_results.dateTime.format("YYYY-MM-D") === d.date) {
-                                weather_info = 
-                                    d.low + 
-                                    " ~ " + 
-                                    d.high + 
-                                    "°" + 
-                                    context.DEGREE_TYPE + 
-                                    ", " + 
-                                    d.precip + 
-                                    "%, " + 
-                                    d.skytextday;
+                    if (obj_results) {
+                        weather.find({ search: context.CITY, degreeType: context.DEGREE_TYPE }, function (err, result) {
+                            if (err) console.log(err);
+
+                            let weather_info;
+                            result[0].forecast.forEach((d) => {
+                                if (obj_results.DateTime.format("YYYY-MM-D") === d.date) {
+
+                                    let weather_emoji = d.skytextday;
+                                    if (d.skytextday.includes("Mostly") || d.skytextday.includes("Partly")) {
+                                        weather_emoji = "⛅";
+                                    }
+                                    else if (d.skytextday.includes("Cloudy")) {
+                                        weather_emoji = "☁️";
+                                    }
+                                    else if (d.skytextday.includes("Sunny")) {
+                                        weather_emoji = "☀️";
+                                    }
+                                    else if (d.skytextday.includes("Snow")) {
+                                        weather_emoji = "❄️";
+                                    }
+                                    else if (d.skytextday.includes("Rain")) {
+                                        weather_emoji = "🌧️";
+                                    }
+
+                                    weather_info =
+                                        d.low +
+                                        " ~ " +
+                                        d.high +
+                                        "°" +
+                                        context.DEGREE_TYPE +
+                                        ", " +
+                                        d.precip +
+                                        "%, " +
+                                        weather_emoji;
+                                }
+                            });
+
+                            // Build the body
+                            let message =
+                                "Next practice:\n" +
+                                "• " + obj_results.DateTime.format("dddd, MMMM Do") + "\n" +
+                                "• " + obj_results.DateTime.format("h:mm a") + "\n" +
+                                "• " + obj_results.Location;
+
+                            // Add weather info
+                            if (weather_info) {
+                                message = message + "\n" +
+                                    "• " + weather_info;
                             }
+
+                            // Description
+                            if (obj_results.Description) {
+                                message = message + "\n" +
+                                    "• " + obj_results.Description;
+                            }
+
+                            // Cancellation info
+                            if (obj_results.IsCancelled === "TRUE") {
+                                message = message + "\n" +
+                                    "• Practice cancelled";
+                            }
+
+                            // Send
+                            twiml.message(message);
+                            twiml.message(obj_results.LocationLink);
+                            callback(null, twiml);
                         });
-                        
-                        // Build the message
-                        let message = "Next practice:\n" +
-                            "• " + obj_results.dateTime.format("dddd, MMMM Do") + "\n" +
-                            "• " + obj_results.dateTime.format("h:mm a") + "\n" +
-                            "• " + obj_results.location;
-                            
-                        if(weather_info) {
-                            message = message + "\n" +
-                                "• " + weather_info;
-                        }
-                        
-                        // Send
-                        twiml.message(message);
+                    }
+                    else {
+                        twiml.message("Something went wrong. Contact your admin!");
                         callback(null, twiml);
-                    });
+                    }
                 }
             });
             break;
+        case 'l':
+            nb_late_req++;
+            let amount = 0;
+            if (body.length > 1 && body[1] && !isNaN(body[1]) && body[1] > 0 && body[1] <= 60) {
+                amount = body[1];
+                twiml.message("Acknowledged: " + amount + " minutes.\n" +
+                    "The captains of your team have been notified.");
+                callback(null, twiml);
+            }
+            else {
+                twiml.message("Please specify how late will you be in minutes [0-60].\n" +
+                    "I.e.: \"L 15\" (meaning 15 minutes late)");
+                callback(null, twiml);
+            }
+            break;
         case 'rub':
             // Test
+            nb_secr_req++;
             twiml.message("rub rub rub");
             callback(null, twiml);
             break;
         default:
             // Default response -- help section
-            twiml.message(
-                "Welcome to " + context.BOT_NAME + "!\n" +
+            nb_help_req++;
+            twiml.message("Welcome to " + context.BOT_NAME + "!\n" +
                 "The available commands are:\n" +
                 "• 'S' for 'S'chedule;\n" +
                 "• 'L' for 'L'ate.");
@@ -152,7 +225,7 @@ exports.handler = function(context, event, callback) {
  * https://github.com/mholt/PapaParse
  * License: MIT
  ****************************************************************************************************/
-var global = (function() {
+var global = (function () {
     // alternative method, similar to `Function('return this')()`
     // but without using `eval` (which is disabled when
     // using Content Security Policy).
@@ -205,11 +278,11 @@ Papa.ReadableStreamStreamer = ReadableStreamStreamer;
 
 if (global.jQuery) {
     var $ = global.jQuery;
-    $.fn.parse = function(options) {
+    $.fn.parse = function (options) {
         var config = options.config || {};
         var queue = [];
 
-        this.each(function(idx) {
+        this.each(function (idx) {
             var supported = $(this).prop('tagName').toUpperCase() === 'INPUT' &&
                 $(this).attr('type').toLowerCase() === 'file' &&
                 global.FileReader;
@@ -259,7 +332,7 @@ if (global.jQuery) {
 
             // Wrap up the user's complete callback, if any, so that ours also gets executed
             var userCompleteFunc = f.instanceConfig.complete;
-            f.instanceConfig.complete = function(results) {
+            f.instanceConfig.complete = function (results) {
                 if (isFunction(userCompleteFunc))
                     userCompleteFunc(results, f.file, f.inputElem);
                 fileComplete();
@@ -293,7 +366,7 @@ if (IS_PAPA_WORKER) {
         // Body doesn't exist yet, must be synchronous
         LOADED_SYNC = true;
     } else {
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             LOADED_SYNC = true;
         }, true);
     }
@@ -395,8 +468,8 @@ function JsonToCsv(_input, _config) {
 
             if (!_input.fields)
                 _input.fields = _input.data[0] instanceof Array ?
-                _input.fields :
-                objectKeys(_input.data[0]);
+                    _input.fields :
+                    objectKeys(_input.data[0]);
 
             if (!(_input.data[0] instanceof Array) && typeof _input.data[0] !== 'object')
                 _input.data = [_input.data]; // handles input like [1,2,3] or ['asdf']
@@ -529,7 +602,7 @@ function ChunkStreamer(config) {
     };
     replaceConfig.call(this, config);
 
-    this.parseChunk = function(chunk) {
+    this.parseChunk = function (chunk) {
         // First chunk pre-processing
         if (this.isFirstChunk && isFunction(this._config.beforeFirstChunk)) {
             var modifiedChunk = this._config.beforeFirstChunk(chunk);
@@ -588,7 +661,7 @@ function ChunkStreamer(config) {
         return results;
     };
 
-    this._sendError = function(error) {
+    this._sendError = function (error) {
         if (isFunction(this._config.error))
             this._config.error(error);
         else if (IS_PAPA_WORKER && this._config.error) {
@@ -622,22 +695,22 @@ function NetworkStreamer(config) {
     var xhr;
 
     if (IS_WORKER) {
-        this._nextChunk = function() {
+        this._nextChunk = function () {
             this._readChunk();
             this._chunkLoaded();
         };
     } else {
-        this._nextChunk = function() {
+        this._nextChunk = function () {
             this._readChunk();
         };
     }
 
-    this.stream = function(url) {
+    this.stream = function (url) {
         this._input = url;
         this._nextChunk(); // Starts streaming
     };
 
-    this._readChunk = function() {
+    this._readChunk = function () {
         if (this._finished) {
             this._chunkLoaded();
             return;
@@ -682,7 +755,7 @@ function NetworkStreamer(config) {
             this._start += this._config.chunkSize;
     }
 
-    this._chunkLoaded = function() {
+    this._chunkLoaded = function () {
         if (xhr.readyState != 4)
             return;
 
@@ -695,7 +768,7 @@ function NetworkStreamer(config) {
         this.parseChunk(xhr.responseText);
     }
 
-    this._chunkError = function(errorMessage) {
+    this._chunkError = function (errorMessage) {
         var errorText = xhr.statusText || errorMessage;
         this._sendError(errorText);
     }
@@ -724,7 +797,7 @@ function FileStreamer(config) {
     // But Firefox is a pill, too - see issue #76: https://github.com/mholt/PapaParse/issues/76
     var usingAsyncReader = typeof FileReader !== 'undefined'; // Safari doesn't consider it a function - see issue #105
 
-    this.stream = function(file) {
+    this.stream = function (file) {
         this._input = file;
         slice = file.slice || file.webkitSlice || file.mozSlice;
 
@@ -738,12 +811,12 @@ function FileStreamer(config) {
         this._nextChunk(); // Starts streaming
     };
 
-    this._nextChunk = function() {
+    this._nextChunk = function () {
         if (!this._finished && (!this._config.preview || this._rowCount < this._config.preview))
             this._readChunk();
     }
 
-    this._readChunk = function() {
+    this._readChunk = function () {
         var input = this._input;
         if (this._config.chunkSize) {
             var end = Math.min(this._start + this._config.chunkSize, this._input.size);
@@ -758,14 +831,14 @@ function FileStreamer(config) {
             }); // mimic the async signature
     }
 
-    this._chunkLoaded = function(event) {
+    this._chunkLoaded = function (event) {
         // Very important to increment start each time before handling results
         this._start += this._config.chunkSize;
         this._finished = !this._config.chunkSize || this._start >= this._input.size;
         this.parseChunk(event.target.result);
     }
 
-    this._chunkError = function() {
+    this._chunkError = function () {
         this._sendError(reader.error.message);
     }
 
@@ -780,12 +853,12 @@ function StringStreamer(config) {
 
     var string;
     var remaining;
-    this.stream = function(s) {
+    this.stream = function (s) {
         string = s;
         remaining = s;
         return this._nextChunk();
     }
-    this._nextChunk = function() {
+    this._nextChunk = function () {
         if (this._finished) return;
         var size = this._config.chunkSize;
         var chunk = size ? remaining.substr(0, size) : remaining;
@@ -806,7 +879,7 @@ function ReadableStreamStreamer(config) {
     var queue = [];
     var parseOnData = true;
 
-    this.stream = function(stream) {
+    this.stream = function (stream) {
         this._input = stream;
 
         this._input.on('data', this._streamData);
@@ -814,7 +887,7 @@ function ReadableStreamStreamer(config) {
         this._input.on('error', this._streamError);
     }
 
-    this._nextChunk = function() {
+    this._nextChunk = function () {
         if (queue.length) {
             this.parseChunk(queue.shift());
         } else {
@@ -822,7 +895,7 @@ function ReadableStreamStreamer(config) {
         }
     }
 
-    this._streamData = bindFunction(function(chunk) {
+    this._streamData = bindFunction(function (chunk) {
         try {
             queue.push(typeof chunk === 'string' ? chunk : chunk.toString(this._config.encoding));
 
@@ -835,18 +908,18 @@ function ReadableStreamStreamer(config) {
         }
     }, this);
 
-    this._streamError = bindFunction(function(error) {
+    this._streamError = bindFunction(function (error) {
         this._streamCleanUp();
         this._sendError(error.message);
     }, this);
 
-    this._streamEnd = bindFunction(function() {
+    this._streamEnd = bindFunction(function () {
         this._streamCleanUp();
         this._finished = true;
         this._streamData('');
     }, this);
 
-    this._streamCleanUp = bindFunction(function() {
+    this._streamCleanUp = bindFunction(function () {
         this._input.removeListener('data', this._streamData);
         this._input.removeListener('end', this._streamEnd);
         this._input.removeListener('error', this._streamError);
@@ -877,7 +950,7 @@ function ParserHandle(_config) {
 
     if (isFunction(_config.step)) {
         var userStep = _config.step;
-        _config.step = function(results) {
+        _config.step = function (results) {
             _results = results;
 
             if (needsHeaderRow())
@@ -904,7 +977,7 @@ function ParserHandle(_config) {
      * and ignoreLastRow parameters. They are used by streamers (wrapper functions)
      * when an input comes in multiple chunks, like from a file.
      */
-    this.parse = function(input, baseIndex, ignoreLastRow) {
+    this.parse = function (input, baseIndex, ignoreLastRow) {
         if (!_config.newline)
             _config.newline = guessLineEndings(input);
 
@@ -942,26 +1015,26 @@ function ParserHandle(_config) {
         });
     };
 
-    this.paused = function() {
+    this.paused = function () {
         return _paused;
     };
 
-    this.pause = function() {
+    this.pause = function () {
         _paused = true;
         _parser.abort();
         _input = _input.substr(_parser.getCharIndex());
     };
 
-    this.resume = function() {
+    this.resume = function () {
         _paused = false;
         self.streamer.parseChunk(_input);
     };
 
-    this.aborted = function() {
+    this.aborted = function () {
         return _aborted;
     };
 
-    this.abort = function() {
+    this.abort = function () {
         _aborted = true;
         _parser.abort();
         _results.meta.aborted = true;
@@ -1191,7 +1264,7 @@ function Parser(config) {
     var cursor = 0;
     var aborted = false;
 
-    this.parse = function(input, baseIndex, ignoreLastRow) {
+    this.parse = function (input, baseIndex, ignoreLastRow) {
         // For some reason, in Chrome, this speeds things up (!?)
         if (typeof input !== 'string')
             throw 'Input must be a string';
@@ -1246,7 +1319,7 @@ function Parser(config) {
         var quoteCharRegex = new RegExp(escapeChar.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&') + quoteChar, 'g');
 
         // Parser loop
-        for (;;) {
+        for (; ;) {
             // Field has opening quote
             if (input[cursor] === quoteChar) {
                 // Start our search for the closing quote where the cursor is
@@ -1255,7 +1328,7 @@ function Parser(config) {
                 // Skip the opening quote
                 cursor++;
 
-                for (;;) {
+                for (; ;) {
                     // Find closing quote
                     var quoteSearch = input.indexOf(quoteChar, quoteSearch + 1);
 
@@ -1456,12 +1529,12 @@ function Parser(config) {
     };
 
     /** Sets the abort flag */
-    this.abort = function() {
+    this.abort = function () {
         aborted = true;
     };
 
     /** Gets the cursor position */
-    this.getCharIndex = function() {
+    this.getCharIndex = function () {
         return cursor;
     };
 }
@@ -1501,7 +1574,7 @@ function mainThreadReceivedMessage(e) {
     if (msg.error)
         worker.userError(msg.error, msg.file);
     else if (msg.results && msg.results.data) {
-        var abort = function() {
+        var abort = function () {
             aborted = true;
             completeWorker(msg.workerId, {
                 data: [],
@@ -1587,7 +1660,7 @@ function copy(obj) {
 }
 
 function bindFunction(f, self) {
-    return function() {
+    return function () {
         f.apply(self, arguments);
     };
 }
