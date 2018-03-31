@@ -55,7 +55,7 @@ exports.handler = function (context, event, callback) {
 
     // Count requests for statistics
     nb_request++;
-    console.log("Request #" + nb_request);
+    console.log("Request total: " + nb_request);
 
     // Update history
     history.push({
@@ -84,6 +84,7 @@ exports.handler = function (context, event, callback) {
 
             // Schedule
             nb_sched_req++;
+            console.log("Schedule request #" + nb_sched_req);
 
             // The URL cannot be shortened: `runtime application timed out`
             // Environment key cannot be longer than 150 characters
@@ -91,7 +92,6 @@ exports.handler = function (context, event, callback) {
                 context.GOOGLE_SHEETS_URL +
                 context.GOOGLE_SHEETS_PID +
                 context.GOOGLE_SHEETS_QUERY;
-            console.log(url_schedule);
 
             // Download the CSV file and analyze it
             Papa.parse(url_schedule, {
@@ -101,7 +101,7 @@ exports.handler = function (context, event, callback) {
                 complete: function (results, file) {
 
                     // Once completed, parse the results
-                    console.log("Parsing complete:", results, file);
+                    console.log("Parsing complete: " + JSON.stringify(results.data), file);
                     let obj_results;
                     let dateTime;
 
@@ -109,13 +109,13 @@ exports.handler = function (context, event, callback) {
                     results.data.some(function (d) {
                         obj_results = {};
                         dateTime = d.Date + " " + d.Hour;
-                        obj_results.DateTime = moment(dateTime);
+                        obj_results.DateTime = moment(dateTime, "M/DD/YYYY HH:mm");
                         obj_results.Location = d.Location;
                         obj_results.LocationLink = d.LocationLink;
                         obj_results.IsCancelled = d.IsCancelled;
                         obj_results.Description = d.Description;
 
-                        return moment().utcOffset(context.UTC_OFFSET).isSameOrBefore(obj_results.DateTime);
+                        return moment().isSameOrBefore(obj_results.DateTime.utcOffset(context.UTC_OFFSET));
                     });
 
                     console.log(obj_results);
@@ -186,7 +186,7 @@ exports.handler = function (context, event, callback) {
 
                             // Send
                             twiml.message(message);
-                            if (obj_results.LocationLink) {
+                            if (obj_results.LocationLink && obj_results.IsCancelled === "FALSE") {
                                 twiml.message(obj_results.LocationLink);
                             }
                             callback(null, twiml);
@@ -200,7 +200,9 @@ exports.handler = function (context, event, callback) {
             });
             break;
         case 'l':
+
             nb_late_req++;
+            console.log("Lateness request #" + nb_late_req);
 
             // Because we're directly contacting the captains, we don't want 
             // to send at irregular hours even if they have "Do not disturb".
@@ -251,12 +253,15 @@ exports.handler = function (context, event, callback) {
         case 'rub':
             // Test
             nb_secr_req++;
+            console.log("Secret request #" + nb_secr_req);
             twiml.message("rub rub rub");
             callback(null, twiml);
             break;
         default:
             // Default response -- help section
             nb_help_req++;
+            console.log("Help request #" + nb_help_req);
+
             twiml.message("Welcome to " + context.BOT_NAME + "!\n" +
                 "The available commands are:\n" +
                 "• 'S' for 'S'chedule;\n" +
