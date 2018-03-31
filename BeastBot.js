@@ -1,33 +1,37 @@
 /****************************************************************************************************
  *                  Environmental Variables
- * --------------------------------------------------------------------------
- * |    Key                     | Value                                     |
- * --------------------------------------------------------------------------
- * | •  BOT_NAME                | Name of the bot                           |
- * | •  CITY                    | Weather forecast                          |
- * | •  DEGREE_TYPE             | C or F                                    |
- * | •  GOOGLE_SHEETS_PID       | -                                         |
- * | •  GOOGLE_SHEETS_QUERY     | -                                         |
- * | •  GOOGLE_SHEETS_URL       | Published URL of Google Sheets in CSV     |
- * | •  UTC_OFFSET              | Timezone offset to correct server time    |
- * --------------------------------------------------------------------------
+ * ------------------------------------------------------------------------------
+ * |  Key                     | Value                                           |
+ * ------------------------------------------------------------------------------
+ * |  BOT_NAME                | Name of the bot                                 |
+ * |  CITY                    | Weather forecast                                |
+ * |  DEGREE_TYPE             | C or F                                          |
+ * |  ENCRYPT_KEY             | Passphrase to decrypt sensitive information     |
+ * |  GOOGLE_SHEETS_URL       | Published URL of Google Sheets in CSV           |
+ * |  MEMBERS_PID             | -                                               |
+ * |  MEMBERS_QUERY           | -                                               |
+ * |  SCHED_QUERY             | -                                               |
+ * |  SCHED_QUERY             | -                                               |
+ * |  UTC_OFFSET              | Timezone offset to correct server time          |
+ * ------------------------------------------------------------------------------
  ****************************************************************************************************/
 
 /****************************************************************************************************
  *                          Dependencies
- * --------------------------------------------------------------------------
- * |    Name                    | Version                                   |
- * --------------------------------------------------------------------------
- * | •  jquery                  | 3.3.1                                     |
- * | •  lodash                  | 4.17.4                                    |
- * | •  twilio                  | 3.6.3                                     |
- * | •  moment                  | 2.21.0                                    |
- * | •  xmlhttprequest          | 1.8.0                                     |
- * | •  util                    | 0.10.3                                    |
- * | •  fs                      | 0.0.1-security                            |
- * | •  xmldom                  | 0.1.27                                    |
- * | •  weather-js              | 2.0.0                                     |
- * --------------------------------------------------------------------------
+ * ------------------------------------------------------------------------------
+ * | Name                     | Version                                         |
+ * ------------------------------------------------------------------------------
+ * | crypto-js                | 3.1.9-1                                         |
+ * | jquery                   | 3.3.1                                           |
+ * | lodash                   | 4.17.4                                          |
+ * | twilio                   | 3.6.3                                           |
+ * | moment                   | 2.21.0                                          |
+ * | xmlhttprequest           | 1.8.0                                           |
+ * | util                     | 0.10.3                                          |
+ * | fs                       | 0.0.1-security                                  |
+ * | xmldom                   | 0.1.27                                          |
+ * | weather-js               | 2.0.0                                           |
+ * ------------------------------------------------------------------------------
  ****************************************************************************************************/
 
 /****************************************************************************************************
@@ -37,6 +41,7 @@ var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 var xhr = new XMLHttpRequest();
 var moment = require('moment');
 var weather = require('weather-js');
+var CryptoJS = require("crypto-js");
 
 /****************************************************************************************************
  * Stats
@@ -263,14 +268,19 @@ exports.handler = function (context, event, callback) {
                         let arr_captains_name = [];
                         let obj_results, username;
 
+                        let bytes;
+                        let phone_plaintext;
+
                         // Distinguish user and captains
                         results.data.forEach((d) => {
-                            if (d.Phone === event.From) {
+                            bytes = CryptoJS.AES.decrypt(d.Phone, context.ENCRYPT_KEY);
+                            phone_plaintext = bytes.toString(CryptoJS.enc.Utf8);
+                            if (phone_plaintext === event.From) {
                                 username = d.Name;
                             }
                             if (d.IsCaptain === "☑") {
                                 obj_results = {};
-                                obj_results.Phone = d.Phone;
+                                obj_results.Phone = phone_plaintext;
                                 obj_results.Name = d.Name;
 
                                 arr_captains_name.push(d.Name);
