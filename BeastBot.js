@@ -61,7 +61,7 @@ exports.handler = function (context, event, callback) {
     history.push({
         user: event.From,
         command: event.Body,
-        time: moment().utcOffset(context.UTC_OFFSET).format("YYYY-MM-D HH:mm:ss")
+        time: moment().utcOffset((-1) * context.UTC_OFFSET).format("YYYY-MM-D HH:mm:ss")
     });
 
     // Show known last users
@@ -80,9 +80,11 @@ exports.handler = function (context, event, callback) {
 
     // Categorize
     switch (body[0]) {
-        case 's':
 
-            // Schedule
+        // ===============================================================================
+        // Schedule
+        // ===============================================================================
+        case 's':
             nb_sched_req++;
             console.log("Schedule request #" + nb_sched_req);
 
@@ -90,8 +92,8 @@ exports.handler = function (context, event, callback) {
             // Environment key cannot be longer than 150 characters
             let url_schedule =
                 context.GOOGLE_SHEETS_URL +
-                context.GOOGLE_SHEETS_PID +
-                context.GOOGLE_SHEETS_QUERY;
+                context.SCHED_PID +
+                context.SCHED_QUERY;
 
             // Download the CSV file and analyze it
             Papa.parse(url_schedule, {
@@ -103,19 +105,17 @@ exports.handler = function (context, event, callback) {
                     // Once completed, parse the results
                     console.log("Parsing complete: " + JSON.stringify(results.data), file);
                     let obj_results;
-                    let dateTime;
 
                     // Get the next practice time
                     results.data.some(function (d) {
                         obj_results = {};
-                        dateTime = d.Date + " " + d.Hour;
-                        obj_results.DateTime = moment(dateTime, "M/DD/YYYY HH:mm");
+                        obj_results.DateTime = moment(d.Date + " " + d.Hour, "YYYY-MM-DD HH:mm");
                         obj_results.Location = d.Location;
                         obj_results.LocationLink = d.LocationLink;
                         obj_results.IsCancelled = d.IsCancelled;
                         obj_results.Description = d.Description;
 
-                        return moment().isSameOrBefore(obj_results.DateTime.utcOffset(context.UTC_OFFSET));
+                        return moment().utcOffset((1) * context.UTC_OFFSET, true).isSameOrBefore(obj_results.DateTime);
                     });
 
                     console.log(obj_results);
@@ -179,7 +179,7 @@ exports.handler = function (context, event, callback) {
                             }
 
                             // Cancellation info
-                            if (obj_results.IsCancelled === "TRUE") {
+                            if (obj_results.IsCancelled === "☑") {
                                 message = message + "\n" +
                                     "• Practice cancelled";
                             }
@@ -199,8 +199,11 @@ exports.handler = function (context, event, callback) {
                 }
             });
             break;
-        case 'l':
 
+        // ===============================================================================
+        // Lateness
+        // ===============================================================================
+        case 'l':
             nb_late_req++;
             console.log("Lateness request #" + nb_late_req);
 
@@ -208,7 +211,7 @@ exports.handler = function (context, event, callback) {
             // to send at irregular hours even if they have "Do not disturb".
 
             // Verify busy hours
-            let current_hour = moment().utcOffset(context.UTC_OFFSET).hour();
+            let current_hour = moment().utcOffset((-1) * context.UTC_OFFSET).hour();
             if (current_hour < 9 || current_hour > 21) {
                 twiml.message("Your message was not sent to the captains (let them sleep!).\n" +
                     "Please resend between 9AM to 9PM.");
@@ -239,10 +242,66 @@ exports.handler = function (context, event, callback) {
             // Verify if amount is [0;60]
             let amount = 0;
             if (body.length > 1 && body[1] && !isNaN(body[1]) && body[1] > 0 && body[1] <= 60) {
-                amount = body[1];
-                twiml.message("Acknowledged: " + amount + " minutes.\n" +
-                    "The captains of your team have been notified.");
-                callback(null, twiml);
+
+                // The URL cannot be shortened: `runtime application timed out`
+                // Environment key cannot be longer than 150 characters
+                let url_schedule =
+                    context.GOOGLE_SHEETS_URL +
+                    context.MEMBERS_PID +
+                    context.MEMBERS_QUERY;
+
+                // Download the CSV file and analyze it
+                Papa.parse(url_schedule, {
+                    download: true,
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function (results, file) {
+
+                        // Once completed, parse the results
+                        console.log("Parsing complete: " + JSON.stringify(results.data), file);
+                        let arr_captains = [];
+                        let arr_captains_name = [];
+                        let obj_results, username;
+
+                        // Distinguish user and captains
+                        results.data.forEach((d) => {
+                            if (d.Phone === event.From) {
+                                username = d.Name;
+                            }
+                            if (d.IsCaptain === "☑") {
+                                obj_results = {};
+                                obj_results.Phone = d.Phone;
+                                obj_results.Name = d.Name;
+
+                                arr_captains_name.push(d.Name);
+                                arr_captains.push(obj_results);
+                            }
+                        });
+
+                        if (username && arr_captains.length > 0) {
+                            amount = body[1];
+                            arr_captains.forEach((o) => {
+                                context.getTwilioClient().messages.create({
+                                    from: event.To,
+                                    to: o.Phone,
+                                    body: username + " will be " + amount + " minutes late."
+                                }, function (err, result) {
+                                    twiml.message("Acknowledged: " + amount + " minutes.\n" +
+                                        "The captains of your team (" +
+                                        arr_captains_name +
+                                        ") have been notified.");
+
+                                    callback(null, twiml);
+                                });
+                            });
+                        }
+                        else {
+                            twiml.message("Your number is not registered.\n" +
+                                "Please contact your administrator as soon as possible.");
+                            callback(null, twiml);
+                        }
+                    }
+                });
             }
             else {
                 twiml.message("Please specify how late will you be in minutes [0-60].\n" +
@@ -250,6 +309,10 @@ exports.handler = function (context, event, callback) {
                 callback(null, twiml);
             }
             break;
+
+        // ===============================================================================
+        // Test
+        // ===============================================================================
         case 'rub':
             // Test
             nb_secr_req++;
@@ -257,6 +320,10 @@ exports.handler = function (context, event, callback) {
             twiml.message("rub rub rub");
             callback(null, twiml);
             break;
+
+        // ===============================================================================
+        // Help
+        // ===============================================================================
         default:
             // Default response -- help section
             nb_help_req++;
