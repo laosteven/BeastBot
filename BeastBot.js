@@ -128,12 +128,13 @@ exports.handler = function (context, event, callback) {
                     // Weather info
                     if (obj_results) {
                         weather.find({ search: context.CITY, degreeType: context.DEGREE_TYPE }, function (err, result) {
-                            if (err) console.log(err);
+                            if (err) {
+                                console.log(err);
+                            }
 
                             let weather_info;
                             result[0].forecast.forEach((d) => {
-                                if (obj_results.DateTime.format("YYYY-MM-D") === d.date) {
-
+                                if (obj_results.DateTime.format("YYYY-MM-DD") === d.date) {
                                     let weather_emoji = d.skytextday;
                                     if (d.skytextday.includes("Mostly") || d.skytextday.includes("Partly")) {
                                         weather_emoji = "⛅";
@@ -191,7 +192,7 @@ exports.handler = function (context, event, callback) {
 
                             // Send
                             twiml.message(message);
-                            if (obj_results.LocationLink && obj_results.IsCancelled === "FALSE") {
+                            if (obj_results.LocationLink && obj_results.IsCancelled === "☐") {
                                 twiml.message(obj_results.LocationLink);
                             }
                             callback(null, twiml);
