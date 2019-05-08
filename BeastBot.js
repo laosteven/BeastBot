@@ -10,7 +10,7 @@
  * |  GOOGLE_SHEETS_URL       | Published URL of Google Sheets in CSV           |
  * |  MEMBERS_PID             | -                                               |
  * |  MEMBERS_QUERY           | -                                               |
- * |  SCHED_QUERY             | -                                               |
+ * |  SCHED_PID               | -                                               |
  * |  SCHED_QUERY             | -                                               |
  * |  UTC_OFFSET              | Timezone offset to correct server time          |
  * ------------------------------------------------------------------------------
@@ -21,7 +21,6 @@
  * ------------------------------------------------------------------------------
  * | Name                     | Version                                         |
  * ------------------------------------------------------------------------------
- * | crypto-js                | 3.1.9-1                                         |
  * | jquery                   | 3.3.1                                           |
  * | lodash                   | 4.17.4                                          |
  * | twilio                   | 3.6.3                                           |
@@ -41,6 +40,7 @@ var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 var moment = require('moment');
 var weather = require('weather-js');
 var CryptoJS = require("crypto-js");
+var crypto = require('crypto');
 
 /****************************************************************************************************
  * Global
@@ -56,7 +56,6 @@ var history = [];
  ****************************************************************************************************/
 exports.handler = function (context, event, callback) {
 
-    // Count requests for statistics
     startup(event, context);
 
     // Prepare markup
@@ -68,13 +67,16 @@ exports.handler = function (context, event, callback) {
     // Categorize
     switch (body[0]) {
         case 's':
-            sendSchedule(context, twiml, callback);
+            sendSchedule(context, twiml, callback, event);
             break;
         case 'l':
             sendLateness(context, twiml, callback, body, event);
             break;
+        case 'broadcast':
+            sendBroadcast(context, twiml, callback);
+            break;
         default:
-            sendHelp();
+            sendHelp(context, twiml, callback);
             break;
     }
 }
@@ -103,126 +105,144 @@ function startup(event, context) {
 }
 
 /****************************************************************************************************
- * Help
- ****************************************************************************************************/
-function sendHelp() {
-    // Default response -- help section
-    nb_help_req++;
-    console.log("Help request #" + nb_help_req);
-
-    twiml.message("Welcome to " + context.BOT_NAME + "!\n" +
-        "The available commands are:\n" +
-        "• 'S' for 'S'chedule;\n" +
-        "• 'L' for 'L'ate (i.e.: \"L 15\" for 15mins late).");
-    callback(null, twiml);
-}
-
-/****************************************************************************************************
  * Schedule
  ****************************************************************************************************/
-function sendSchedule(context, twiml, callback) {
+function sendSchedule(context, twiml, callback, event) {
     nb_sched_req++;
     console.log("Schedule request #" + nb_sched_req);
 
     // The URL cannot be shortened: `runtime application timed out`
     // Environment key cannot be longer than 150 characters
-    let url_schedule = context.GOOGLE_SHEETS_URL +
-        context.SCHED_PID +
-        context.SCHED_QUERY;
+    let url_schedule =
+        context.GOOGLE_SHEETS_URL +
+        context.MEMBERS_PID +
+        context.MEMBERS_QUERY;
 
-    // Download the CSV file and analyze it
     Papa.parse(url_schedule, {
         download: true,
         header: true,
         skipEmptyLines: true,
         complete: function (results, file) {
-            // Once completed, parse the results
             console.log("Parsing complete: " + JSON.stringify(results.data), file);
-            let obj_results;
-            // Get the next practice time
-            results.data.some(function (d) {
-                obj_results = {};
-                obj_results.DateTime = moment(d.Date + " " + d.Hour, "YYYY-MM-DD HH:mm");
-                obj_results.Location = d.Location;
-                obj_results.LocationLink = d.LocationLink;
-                obj_results.IsCancelled = d.IsCancelled;
-                obj_results.Description = d.Description;
-                return moment().utcOffset((1) * context.UTC_OFFSET, true).isSameOrBefore(obj_results.DateTime);
+            let phone, team;
+
+            // Find user team
+            results.data.forEach((d) => {
+                phone = decrypt(context, d.Phone);
+                if (phone === event.From) {
+                    team = d.Team;
+                }
             });
-            console.log(obj_results);
 
-            // Weather info
-            if (obj_results) {
-                weather.find({ search: context.CITY, degreeType: context.DEGREE_TYPE }, function (err, result) {
-                    if (err) {
-                        console.log(err);
-                    }
-                    let weather_info;
-                    result[0].forecast.forEach((d) => {
-                        if (obj_results.DateTime.format("YYYY-MM-DD") === d.date) {
-                            let weather_emoji = d.skytextday;
-                            if (d.skytextday.includes("Mostly") || d.skytextday.includes("Partly")) {
-                                weather_emoji = "⛅";
-                            }
-                            else if (d.skytextday.includes("Cloudy")) {
-                                weather_emoji = "☁️";
-                            }
-                            else if (d.skytextday.includes("Sunny")) {
-                                weather_emoji = "☀️";
-                            }
-                            else if (d.skytextday.includes("Snow")) {
-                                weather_emoji = "❄️";
-                            }
-                            else if (d.skytextday.includes("Rain")) {
-                                weather_emoji = "🌧️";
-                            }
-                            weather_info =
-                                d.low +
-                                " ~ " +
-                                d.high +
-                                "°" +
-                                context.DEGREE_TYPE +
-                                ", " +
-                                d.precip +
-                                "%, " +
-                                weather_emoji;
+            if (team) {
+                let url_schedule =
+                    context.GOOGLE_SHEETS_URL +
+                    context.SCHED_PID +
+                    context.SCHED_QUERY;
+
+                // Download the CSV file and analyze it
+                Papa.parse(url_schedule, {
+                    download: true,
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function (results, file) {
+                        // Once completed, parse the results
+                        console.log("Parsing complete: " + JSON.stringify(results.data), file);
+                        let obj_results;
+
+                        // Get the next practice time
+                        results.data.some(function (d) {
+                            obj_results = {};
+                            obj_results.DateTime = moment(d.Date + " " + d.Hour, "YYYY-MM-DD HH:mm");
+                            obj_results.Location = d.Location;
+                            obj_results.LocationLink = d.LocationLink;
+                            obj_results.IsCancelled = d.IsCancelled;
+                            obj_results.Description = d.Description;
+
+                            return d.Team == team && moment().utcOffset((1) * context.UTC_OFFSET, true).isSameOrBefore(obj_results.DateTime);
+                        });
+                        console.log(obj_results);
+
+                        // Weather info
+                        if (obj_results) {
+                            weather.find({ search: context.CITY, degreeType: context.DEGREE_TYPE }, function (err, result) {
+                                if (err) {
+                                    console.log(err);
+                                }
+                                let weather_info;
+                                result[0].forecast.forEach((d) => {
+                                    if (obj_results.DateTime.format("YYYY-MM-DD") === d.date) {
+                                        let weather_emoji = d.skytextday;
+                                        if (d.skytextday.includes("Mostly") || d.skytextday.includes("Partly")) {
+                                            weather_emoji = "⛅";
+                                        }
+                                        else if (d.skytextday.includes("Cloudy")) {
+                                            weather_emoji = "☁️";
+                                        }
+                                        else if (d.skytextday.includes("Sunny")) {
+                                            weather_emoji = "☀️";
+                                        }
+                                        else if (d.skytextday.includes("Snow")) {
+                                            weather_emoji = "❄️";
+                                        }
+                                        else if (d.skytextday.includes("Rain")) {
+                                            weather_emoji = "🌧️";
+                                        }
+                                        weather_info =
+                                            d.low +
+                                            " ~ " +
+                                            d.high +
+                                            "°" +
+                                            context.DEGREE_TYPE +
+                                            ", " +
+                                            d.precip +
+                                            "%, " +
+                                            weather_emoji;
+                                    }
+                                });
+
+                                // Build the body
+                                let message = team + " - next practice:\n" +
+                                    "• " + obj_results.DateTime.format("dddd, MMMM Do") + "\n" +
+                                    "• " + obj_results.DateTime.format("h:mm a") + "\n" +
+                                    "• " + obj_results.Location;
+
+                                // Add weather info
+                                if (weather_info) {
+                                    message = message + "\n" +
+                                        "• " + weather_info;
+                                }
+
+                                // Description
+                                if (obj_results.Description) {
+                                    message = message + "\n" +
+                                        "• " + obj_results.Description;
+                                }
+
+                                // Cancellation info
+                                if (obj_results.IsCancelled === "☑") {
+                                    message = message + "\n" +
+                                        "• Practice cancelled";
+                                }
+
+                                // Send
+                                twiml.message(message);
+                                if (obj_results.LocationLink && obj_results.IsCancelled !== "☑") {
+                                    twiml.message(obj_results.LocationLink);
+                                }
+                                callback(null, twiml);
+                            });
                         }
-                    });
-
-                    // Build the body
-                    let message = "Next practice:\n" +
-                        "• " + obj_results.DateTime.format("dddd, MMMM Do") + "\n" +
-                        "• " + obj_results.DateTime.format("h:mm a") + "\n" +
-                        "• " + obj_results.Location;
-
-                    // Add weather info
-                    if (weather_info) {
-                        message = message + "\n" +
-                            "• " + weather_info;
+                        else {
+                            twiml.message("Something went wrong. Contact your captains!");
+                            callback(null, twiml);
+                        }
                     }
-
-                    // Description
-                    if (obj_results.Description) {
-                        message = message + "\n" +
-                            "• " + obj_results.Description;
-                    }
-
-                    // Cancellation info
-                    if (obj_results.IsCancelled === "☑") {
-                        message = message + "\n" +
-                            "• Practice cancelled";
-                    }
-
-                    // Send
-                    twiml.message(message);
-                    if (obj_results.LocationLink && obj_results.IsCancelled === "â") {
-                        twiml.message(obj_results.LocationLink);
-                    }
-                    callback(null, twiml);
                 });
             }
             else {
-                twiml.message("Something went wrong. Contact your admin!");
+                twiml.message("Your number is not registered.\n" +
+                    "Please contact your captains.");
                 callback(null, twiml);
             }
         }
@@ -269,7 +289,8 @@ function sendLateness(context, twiml, callback, body, event) {
     if (body.length > 1 && body[1] && !isNaN(body[1]) && body[1] > 0 && body[1] <= 60) {
         // The URL cannot be shortened: `runtime application timed out`
         // Environment key cannot be longer than 150 characters
-        let url_schedule = context.GOOGLE_SHEETS_URL +
+        let url_schedule = 
+            context.GOOGLE_SHEETS_URL +
             context.MEMBERS_PID +
             context.MEMBERS_QUERY;
 
@@ -323,7 +344,7 @@ function sendLateness(context, twiml, callback, body, event) {
                 }
                 else {
                     twiml.message("Your number is not registered.\n" +
-                        "Please contact your administrator as soon as possible.");
+                        "Please contact your captains as soon as possible.");
                     callback(null, twiml);
                 }
             }
@@ -334,6 +355,43 @@ function sendLateness(context, twiml, callback, body, event) {
             "I.e.: \"L 15\" (meaning 15 minutes late)");
         callback(null, twiml);
     }
+} 
+
+/****************************************************************************************************
+ * Decrypting sensitive information
+ ****************************************************************************************************/
+function decrypt(context, text) {
+    var decipher = crypto.createDecipher(context.CRYPTO_ALGORITHM, context.ENCRYPT_KEY);
+    var dec = decipher.update(text, 'hex', 'utf8');
+    dec += decipher.final('utf8');
+
+    return dec;
+}
+
+/****************************************************************************************************
+ * Broadcast
+ ****************************************************************************************************/
+function sendBroadcast(context, twiml, callback) {
+    twiml.message("Hello! This is " + context.BOT_NAME + "! Your personal Dragonboat assistant\n" +
+        "If you do not recognize who this is or think this is an error, please ignore this message.\n");
+    callback(null, twiml);
+}
+
+/****************************************************************************************************
+ * Help
+ ****************************************************************************************************/
+function sendHelp(context, twiml, callback) {
+    // Default response -- help section
+    nb_help_req++;
+    console.log("Help request #" + nb_help_req);
+
+    twiml.message("Welcome to " + context.BOT_NAME + "!\n" +
+        "The available commands are:\n" +
+        "• 'S' for 'S'chedule;\n" +
+        "• 'L' for 'L'ate + [?]:\n" +
+        "   • \"L 15\" for 15mins late;\n" +
+        "   • \"L absent\".");
+    callback(null, twiml);
 }
 
 /****************************************************************************************************
