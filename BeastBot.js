@@ -13,6 +13,8 @@
  * |  SCHED_PID               | -                                               |
  * |  SCHED_QUERY             | -                                               |
  * |  UTC_OFFSET              | Timezone offset to correct server time          |
+ * |  CRYPTO_ALGORITHM        | Which algorithm to use for crypto               |
+ * |  BROADCAST_ALLOWED       | Restrain Broadcast usage                        |
  * ------------------------------------------------------------------------------
  ****************************************************************************************************/
 
@@ -247,16 +249,6 @@ function sendLateness(context, twiml, callback, body, event) {
     nb_late_req++;
     console.log("Lateness request #" + nb_late_req);
 
-    // Because we're directly contacting the captains, we don't want 
-    // to send at irregular hours even if they have "Do not disturb".
-    // Verify busy hours
-    // let current_hour = moment().utcOffset((-1) * context.UTC_OFFSET).hour();
-    // if (current_hour < 9 || current_hour > 21) {
-    //     twiml.message("Your message was not sent to the captains (let them sleep!).\n" +
-    //         "Please resend between 9AM to 9PM.");
-    //     callback(null, twiml);
-    // }
-
     // Avoid spams
     // History must be cloned since `reverse()` will permanently change the array order
     let temp_history = history.slice();
@@ -282,13 +274,13 @@ function sendLateness(context, twiml, callback, body, event) {
 
         // The URL cannot be shortened: `runtime application timed out`
         // Environment key cannot be longer than 150 characters
-        let url_schedule = 
+        let url_members = 
             context.GOOGLE_SHEETS_URL +
             context.MEMBERS_PID +
             context.MEMBERS_QUERY;
 
         // Download the CSV file and analyze it
-        Papa.parse(url_schedule, {
+        Papa.parse(url_members, {
             download: true,
             header: true,
             skipEmptyLines: true,
@@ -372,26 +364,66 @@ function decrypt(context, text) {
  * Broadcast
  ****************************************************************************************************/
 function sendBroadcast(context, twiml, callback) {
-    twiml.message("Hello! This is " + context.BOT_NAME + "! Your personal Dragonboat assistant\n" +
-        "If you do not recognize the sender or think this is a mistake, please ignore this message!\n");
-    callback(null, twiml);
+    if (context.BROADCAST_ALLOWED) {
+        let url_members =
+            context.GOOGLE_SHEETS_URL +
+            context.MEMBERS_PID +
+            context.MEMBERS_QUERY;
+
+        Papa.parse(url_members, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: function (results, file) {
+                console.log("Parsing complete: " + JSON.stringify(results.data), file);
+                let arr_members, obj_results, phone;
+
+                // Distinguish user and captains
+                results.data.forEach((d) => {
+                    if (d.Team == body[0]) {
+                        phone = decrypt(context, d.Phone);
+                        obj_results = {};
+                        obj_results.Phone = phone;
+                        arr_members.push(obj_results);
+                    }
+                });
+
+                let body_msg = "Hello! This is " + context.BOT_NAME + ", your personal Dragonboat assistant.\n" +
+                    "If you do not recognize the sender or think this is a mistake, please ignore this message!";
+                let body_feedback = 'Broadcast done';
+
+                arr_members.forEach((o) => {
+                    context.getTwilioClient().messages.create({
+                        from: event.To,
+                        to: o.Phone,
+                        body: body_msg
+                    }, function (err, result) {
+                        twiml.message(body_feedback);
+                        callback(null, twiml);
+                    });
+                });
+            }
+        });
+    }
+    else {
+        sendHelp(context, twiml, callback);
+    }
 }
 
 /****************************************************************************************************
  * Help
  ****************************************************************************************************/
 function sendHelp(context, twiml, callback) {
-    // Default response -- help section
     nb_help_req++;
     console.log("Help request #" + nb_help_req);
 
     twiml.message("Welcome to " + context.BOT_NAME + "!\n" +
+        "Write the first letter of your team + command.\n" +
         "The available commands are:\n" +
         "• 'S' for 'S'chedule;\n" +
         "• 'L' for 'L'ate + [?]:\n" +
-        "   • \"L 15\" for 15mins late (between 0-60mins);\n" +
+        "   • \"L 15\" for 15mins late;\n" +
         "   • \"L absent\" for absence.\n\n" +
-        "Please include the first letter of your team at the beginning of your command.\n" +
         "Example: 'T S' or 'T L 15'");
     callback(null, twiml);
 }
