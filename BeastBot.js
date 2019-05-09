@@ -41,7 +41,6 @@
 var XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 var moment = require('moment');
 var weather = require('weather-js');
-var CryptoJS = require("crypto-js");
 var crypto = require('crypto');
 
 /****************************************************************************************************
@@ -77,7 +76,7 @@ exports.handler = function (context, event, callback) {
                     sendLateness(context, twiml, callback, body, event);
                     break;
                 case 'broadcast':
-                    sendBroadcast(context, twiml, callback);
+                    sendBroadcast(context, twiml, callback, body);
                     break;
             }
             break;
@@ -90,9 +89,12 @@ exports.handler = function (context, event, callback) {
                     sendLateness(context, twiml, callback, body, event);
                     break;
                 case 'broadcast':
-                    sendBroadcast(context, twiml, callback);
+                    sendBroadcast(context, twiml, callback, body);
                     break;
             }
+            break;
+        case 'n':
+            sendNudes(twiml, callback);
             break;
         default:
             sendHelp(context, twiml, callback);
@@ -361,9 +363,18 @@ function decrypt(context, text) {
 }
 
 /****************************************************************************************************
+ * Send Nudes
+ ****************************************************************************************************/
+function sendNudes(twiml, callback) {
+    twiml.message("Searching for paddler's nudes, please wait ...");
+    twiml.message().media("http://hunkholder.pixoil.com/img/600");
+    callback(null, twiml);
+}
+
+/****************************************************************************************************
  * Broadcast
  ****************************************************************************************************/
-function sendBroadcast(context, twiml, callback) {
+function sendBroadcast(context, twiml, callback, body) {
     if (context.BROADCAST_ALLOWED) {
         let url_members =
             context.GOOGLE_SHEETS_URL +
