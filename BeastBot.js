@@ -1,38 +1,5 @@
 /****************************************************************************************************
- *                  Environmental Variables
- * ------------------------------------------------------------------------------
- * |  Key                     | Value                                           |
- * ------------------------------------------------------------------------------
- * |  BOT_NAME                | Name of the bot                                 |
- * |  CITY                    | Weather forecast                                |
- * |  DEGREE_TYPE             | C or F                                          |
- * |  ENCRYPT_KEY             | Passphrase to decrypt sensitive information     |
- * |  GOOGLE_SHEETS_URL       | Published URL of Google Sheets in CSV           |
- * |  MEMBERS_PID             | -                                               |
- * |  MEMBERS_QUERY           | -                                               |
- * |  SCHED_PID               | -                                               |
- * |  SCHED_QUERY             | -                                               |
- * |  UTC_OFFSET              | Timezone offset to correct server time          |
- * |  CRYPTO_ALGORITHM        | Which algorithm to use for crypto               |
- * |  BROADCAST_ALLOWED       | Restrain Broadcast usage                        |
- * ------------------------------------------------------------------------------
- ****************************************************************************************************/
-
-/****************************************************************************************************
- *                          Dependencies
- * ------------------------------------------------------------------------------
- * | Name                     | Version                                         |
- * ------------------------------------------------------------------------------
- * | jquery                   | 3.3.1                                           |
- * | lodash                   | 4.17.4                                          |
- * | twilio                   | 3.6.3                                           |
- * | moment                   | 2.21.0                                          |
- * | xmlhttprequest           | 1.8.0                                           |
- * | util                     | 0.10.3                                          |
- * | fs                       | 0.0.1-security                                  |
- * | xmldom                   | 0.1.27                                          |
- * | weather-js               | 2.0.0                                           |
- * ------------------------------------------------------------------------------
+ * BeastBot.js
  ****************************************************************************************************/
 
 /****************************************************************************************************
@@ -62,43 +29,54 @@ exports.handler = function (context, event, callback) {
     // Prepare markup
     let twiml = new Twilio.twiml.MessagingResponse();
 
-    // Lowercase response
-    const body = event.Body ? event.Body.toLowerCase().split(" ") : "";
+    try {
+        // Lowercase response
+        const body = event.Body ? event.Body.toLowerCase().split(" ") : "";
 
-    // Categorize
-    switch (body[0]) {
-        case 'f':
-            switch (body[1]) {
-                case 's':
-                    sendSchedule(context, twiml, callback, body);
-                    break;
-                case 'l':
-                    sendLateness(context, twiml, callback, body, event);
-                    break;
-                case 'broadcast':
-                    sendBroadcast(context, twiml, callback, body);
-                    break;
-            }
-            break;
-        case 't':
-            switch (body[1]) {
-                case 's':
-                    sendSchedule(context, twiml, callback, body);
-                    break;
-                case 'l':
-                    sendLateness(context, twiml, callback, body, event);
-                    break;
-                case 'broadcast':
-                    sendBroadcast(context, twiml, callback, body);
-                    break;
-            }
-            break;
-        case 'n':
-            sendNudes(twiml, callback);
-            break;
-        default:
-            sendHelp(context, twiml, callback);
-            break;
+        // Categorize
+        switch (body[0]) {
+            case 'f':
+                switch (body[1]) {
+                    case 's':
+                        sendSchedule(context, twiml, callback, body);
+                        break;
+                    case 'l':
+                        sendLateness(context, twiml, callback, body, event);
+                        break;
+                    case 'broadcast':
+                        sendBroadcast(context, twiml, callback, body, event);
+                        break;
+                    default:
+                        sendHelp(context, twiml, callback);
+                        break;
+                }
+                break;
+            case 't':
+                switch (body[1]) {
+                    case 's':
+                        sendSchedule(context, twiml, callback, body);
+                        break;
+                    case 'l':
+                        sendLateness(context, twiml, callback, body, event);
+                        break;
+                    case 'broadcast':
+                        sendBroadcast(context, twiml, callback, body, event);
+                        break;
+                    default:
+                        sendHelp(context, twiml, callback);
+                        break;
+                }
+                break;
+            case 'n':
+                sendNudes(twiml, callback);
+                break;
+            default:
+                sendHelp(context, twiml, callback);
+                break;
+        }
+    } catch (error) {
+        console.log(error);
+        sendError(context, twiml, callback, error);
     }
 }
 
@@ -164,40 +142,42 @@ function sendSchedule(context, twiml, callback, body) {
                 // Weather info
                 if (obj_results) {
                     weather.find({ search: context.CITY, degreeType: context.DEGREE_TYPE }, function (err, result) {
+                        let weather_info;
                         if (err) {
                             console.log(err);
                         }
-                        let weather_info;
-                        result[0].forecast.forEach((d) => {
-                            if (obj_results.DateTime.format("YYYY-MM-DD") === d.date) {
-                                let weather_emoji = d.skytextday;
-                                if (d.skytextday.includes("Mostly") || d.skytextday.includes("Partly")) {
-                                    weather_emoji = "⛅";
+                        else {
+                            result[0].forecast.forEach((d) => {
+                                if (obj_results.DateTime.format("YYYY-MM-DD") === d.date) {
+                                    let weather_emoji = d.skytextday;
+                                    if (d.skytextday.includes("Mostly") || d.skytextday.includes("Partly")) {
+                                        weather_emoji = "⛅";
+                                    }
+                                    else if (d.skytextday.includes("Cloudy")) {
+                                        weather_emoji = "☁️";
+                                    }
+                                    else if (d.skytextday.includes("Sunny")) {
+                                        weather_emoji = "☀️";
+                                    }
+                                    else if (d.skytextday.includes("Snow")) {
+                                        weather_emoji = "❄️";
+                                    }
+                                    else if (d.skytextday.includes("Rain")) {
+                                        weather_emoji = "🌧️";
+                                    }
+                                    weather_info =
+                                        d.low +
+                                        " ~ " +
+                                        d.high +
+                                        "°" +
+                                        context.DEGREE_TYPE +
+                                        ", " +
+                                        d.precip +
+                                        "%, " +
+                                        weather_emoji;
                                 }
-                                else if (d.skytextday.includes("Cloudy")) {
-                                    weather_emoji = "☁️";
-                                }
-                                else if (d.skytextday.includes("Sunny")) {
-                                    weather_emoji = "☀️";
-                                }
-                                else if (d.skytextday.includes("Snow")) {
-                                    weather_emoji = "❄️";
-                                }
-                                else if (d.skytextday.includes("Rain")) {
-                                    weather_emoji = "🌧️";
-                                }
-                                weather_info =
-                                    d.low +
-                                    " ~ " +
-                                    d.high +
-                                    "°" +
-                                    context.DEGREE_TYPE +
-                                    ", " +
-                                    d.precip +
-                                    "%, " +
-                                    weather_emoji;
-                            }
-                        });
+                            });
+                        }
 
                         // Build the body
                         let message = "Next practice:\n" +
@@ -250,27 +230,6 @@ function sendSchedule(context, twiml, callback, body) {
 function sendLateness(context, twiml, callback, body, event) {
     nb_late_req++;
     console.log("Lateness request #" + nb_late_req);
-
-    // Avoid spams
-    // History must be cloned since `reverse()` will permanently change the array order
-    let temp_history = history.slice();
-    temp_history.reverse();
-    let i;
-    var curr_moment = moment(temp_history[0].time);
-    for (i = 1; i < temp_history.length; i++) {
-        if (temp_history[0].user === temp_history[i].user) {
-            let prev_moment = moment(temp_history[i].time);
-            let diff_sec = curr_moment.diff(prev_moment, 'seconds');
-            if (diff_sec < 60) {
-                let val = 60 - diff_sec;
-                twiml.message("Please wait one minute.\n" +
-                    "You may send again in " + val + " second(s).");
-                callback(null, twiml);
-                return;
-            }
-            break;
-        }
-    }
 
     if (body.length > 2 && body[2] && (body[2] === 'absent' || body[2] > 0 && body[2] <= 60)) {
 
@@ -374,7 +333,7 @@ function sendNudes(twiml, callback) {
 /****************************************************************************************************
  * Broadcast
  ****************************************************************************************************/
-function sendBroadcast(context, twiml, callback, body) {
+function sendBroadcast(context, twiml, callback, body, event) {
     if (context.BROADCAST_ALLOWED) {
         let url_members =
             context.GOOGLE_SHEETS_URL +
@@ -387,7 +346,7 @@ function sendBroadcast(context, twiml, callback, body) {
             skipEmptyLines: true,
             complete: function (results, file) {
                 console.log("Parsing complete: " + JSON.stringify(results.data), file);
-                let arr_members, obj_results, phone;
+                let arr_members = [], obj_results, phone;
 
                 // Distinguish user and captains
                 results.data.forEach((d) => {
@@ -400,7 +359,8 @@ function sendBroadcast(context, twiml, callback, body) {
                 });
 
                 let body_msg = "Hello! This is " + context.BOT_NAME + ", your personal Dragonboat assistant.\n" +
-                    "If you do not recognize the sender or think this is a mistake, please ignore this message!";
+                    "If you do not recognize the sender or think this is a mistake, please ignore this message.\n\n" +
+                    "Start by saying 'Hello'!";
                 let body_feedback = 'Broadcast done';
 
                 arr_members.forEach((o) => {
@@ -429,13 +389,25 @@ function sendHelp(context, twiml, callback) {
     console.log("Help request #" + nb_help_req);
 
     twiml.message("Welcome to " + context.BOT_NAME + "!\n" +
-        "Write the first letter of your team + command.\n" +
         "The available commands are:\n" +
-        "• 'S' for 'S'chedule;\n" +
-        "• 'L' for 'L'ate + [?]:\n" +
-        "   • \"L 15\" for 15mins late;\n" +
-        "   • \"L absent\" for absence.\n\n" +
+        "• 'T S' for 'S'chedule;\n" +
+        "• 'T L' for 'L'ate + [?]:\n" +
+        "   • \"T L 15\" for 15mins late;\n" +
+        "   • \"T L absent\" for absence.\n" +
+        "T: 1st letter of your 'T'eam\n\n" +
         "Example: 'T S' or 'T L 15'");
+    callback(null, twiml);
+}
+
+/****************************************************************************************************
+ * Error
+ ****************************************************************************************************/
+function sendError(context, twiml, callback, error) {
+    twiml.message("Oh no! " + context.BOT_NAME + " could not understand your message.\n"+
+        "Please try sending your command again.\n" +
+        "Example: 'T S' or 'T L 15'");
+    twiml.message("If the problem persist, send this to your team captain:");
+    twiml.message(error.message);
     callback(null, twiml);
 }
 
