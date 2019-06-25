@@ -46,21 +46,6 @@ exports.handler = function (context, event, callback) {
         // Categorize
         switch (body[0]) {
             case 'f':
-                switch (body[1]) {
-                    case 's':
-                        sendSchedule(twiml, callback, body);
-                        break;
-                    case 'l':
-                        sendLateness(twiml, callback, body, event);
-                        break;
-                    case 'broadcast':
-                        sendBroadcast(twiml, callback, body, event);
-                        break;
-                    default:
-                        sendHelp(twiml, callback);
-                        break;
-                }
-                break;
             case 't':
                 switch (body[1]) {
                     case 's':
