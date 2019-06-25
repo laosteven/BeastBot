@@ -2,14 +2,17 @@
   <img src="https://beastdbc.com/static/media/beast-logo.ae06a6b9.png" alt="BeastBot" width="190" />
 </a>
 
-# BeastBot: Automated SMS responses for [Dragonboat](https://en.wikipedia.org/wiki/Dragon_boat) teams.
+# BeastBot: Automated SMS responses for [Dragonboat](https://en.wikipedia.org/wiki/Dragon_boat) teams
 
 <img alt="apache" src="https://img.shields.io/github/license/laosteven/beastbot.svg"> <img alt="fyūjon" src="https://img.shields.io/badge/team-fyūjon-ff0000.svg"> <img alt="titans" src="https://img.shields.io/badge/team-titans-ff0000.svg"> <img alt="subscriptions" src="https://img.shields.io/badge/captains-7-blue.svg"> <img alt="subscriptions" src="https://img.shields.io/badge/paddlers-57-blue.svg"> 
 
 Quickly check team schedule or notify team captains for lateness or absence by inputting recognized commands.
 
+![Introduction](https://i.imgur.com/CXM1G3q.jpg)
+
 ## How to use
-The bot will recognize two commands:
+### For everyone
+The bot will recognize various commands:
 * `S`: **S** for **S**chedule
     * The bot will retrieve the team's schedule from a published Google Sheets URL and will send back:
         * the upcoming practice time;
@@ -21,6 +24,17 @@ The bot will recognize two commands:
 * `L`: **L** for **L**ate
     * By specifying the amount of time you will be late in minutes, the team captains will receive a text message specifying who will be late. 
     * For example, if you will be 15 minutes late, you will send `L 15`.
+
+### For captains
+* `broadcast`
+    * Instead of asking users to manually add Beast Bot's number in their cellphone, the broadcast command will send a message to all registered users.
+    * To avoid spamming, the broadcast command can only be used when the environmental variable `BROADCAST_ALLOWED` in Twilio is set to true.
+
+* `invite`
+    * For new paddlers who are joining the team after registration, a message will be sent to specific paddlers by listing their phone number after the command.
+    * For example, `invite 5140123456 438012456 5140987654`
+
+For a more visual introduction on how Beast Bot works, you may check the ![Google Slide presentation](https://drive.google.com/open?id=1DPpWjtM26jzIHOoUT87-_JgiyUxbZ6fb).
 
 ## Getting Started
 These instructions will guide you on how to build an automated SMS bot for displaying practice hours and for notifying the team captains for late members. 
@@ -65,32 +79,30 @@ With a Twilio phone number, you will use [Twilio Functions](https://www.twilio.c
 Head to the [Configure page](https://www.twilio.com/console/runtime/functions/configure) to set your project's variables and dependencies:
 
 #### Environmental Variables
-```
- • BOT_NAME           : Name of the bot
- • BROADCAST_ALLOWED  : Broadcast announcement about the Bot's existence
- • CITY               : Weather forecast 
- • DEGREE_TYPE        : C or F 
- • ENCRYPT_KEY        : Passphrase to decrypt sensitive information 
- • GOOGLE_SHEETS_URL  : Published URL of Google Sheets in CSV
- • MEMBERS_PID        : -                                           
- • MEMBERS_QUERY      : -                                           
- • SCHED_PID          : -                                           
- • SCHED_QUERY        : -                                           
- • UTC_OFFSET         : Timezone offset to correct server time
-```
+| Key | Value |
+| --- | --- |
+|`BOT_NAME`           | Name of the bot                               |
+|`BROADCAST_ALLOWED`  | Limit broadcasting to avoid spamming teams    |
+|`CITY`               | Weather forecast                              |
+|`DEGREE_TYPE`        | C or F                                        |
+|`ENCRYPT_KEY`        | Passphrase to decrypt sensitive information   |
+|`GOOGLE_SHEETS_URL`  | Published URL of Google Sheets in CSV         |
+|`MEMBERS_PID`        | The PID part of the Member's URL              |
+|`MEMBERS_QUERY`      | The Query part of the Member's URL            |
+|`SCHED_PID`          | The PID part of the Schedule's URL            |
+|`SCHED_QUERY`        | The Query part of the Schedule's URL          |
+|`UTC_OFFSET`         | Timezone offset to correct server time        |
 
 #### Dependencies
-```
- • twilio             : 3.6.3
- • moment             : 2.21.0
- • papaparse          : 5.0.0
- • weather-js         : 2.0.0
- • node-fetch         : 2.6.0
-```
+| Package | Version | How is it being used in Beast Bot |
+| --- | ---: | --- | 
+|twilio | 3.6.3 | Mandatory: making the app run | 
+|moment | 2.21.0 | Getting the correct dates when requesting schedule |
+|papaparse | 5.0.0 | Parsing CSV file for paddlers or schedule information |
+|weather-js | 2.0.0 | Weather forecast for next practice day |
+|node-fetch | 2.6.0 | Downloading the CSV file based on Google Sheets URL |
 
 And it is done! Say `hello` to your bot!
-
-![Lateness example](https://i.imgur.com/CXM1G3q.jpg)
 
 ## Acknowledgments
 * [BEAST! Dragonboat Club](http://beastdbc.com)
