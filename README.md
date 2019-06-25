@@ -34,7 +34,7 @@ The bot will recognize various commands:
     * For new paddlers who are joining the team after registration, a message will be sent to specific paddlers by listing their phone number after the command.
     * For example, `invite 5140123456 438012456 5140987654`
 
-For a more visual introduction on how Beast Bot works, you may check the ![Google Slide presentation](https://drive.google.com/open?id=1DPpWjtM26jzIHOoUT87-_JgiyUxbZ6fb).
+For a more visual introduction on how Beast Bot works, you may check the [Google Slide presentation](https://drive.google.com/open?id=1DPpWjtM26jzIHOoUT87-_JgiyUxbZ6fb).
 
 ## Getting Started
 These instructions will guide you on how to build an automated SMS bot for displaying practice hours and for notifying the team captains for late members. 
