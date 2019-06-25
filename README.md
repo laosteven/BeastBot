@@ -32,7 +32,7 @@ The bot will recognize various commands:
 
 * `invite`
     * For new paddlers who are joining the team after registration, a message will be sent to specific paddlers by listing their phone number after the command.
-    * For example, `invite 5140123456 438012456 5140987654`
+    * For example, `invite +15140123456 +1438012456 +15140987654`
 
 For a more visual introduction on how Beast Bot works, you may check the [Google Slide presentation](https://drive.google.com/open?id=1DPpWjtM26jzIHOoUT87-_JgiyUxbZ6fb).
 
@@ -87,11 +87,14 @@ Head to the [Configure page](https://www.twilio.com/console/runtime/functions/co
 |`DEGREE_TYPE`        | C or F                                        |
 |`ENCRYPT_KEY`        | Passphrase to decrypt sensitive information   |
 |`GOOGLE_SHEETS_URL`  | Published URL of Google Sheets in CSV         |
-|`MEMBERS_PID`        | The PID part of the Member's URL              |
-|`MEMBERS_QUERY`      | The Query part of the Member's URL            |
-|`SCHED_PID`          | The PID part of the Schedule's URL            |
-|`SCHED_QUERY`        | The Query part of the Schedule's URL          |
+|`MEMBERS_PID`<sup>1</sup>        | The PID part of the Member's URL              |
+|`MEMBERS_QUERY`<sup>1</sup>      | The Query part of the Member's URL            |
+|`SCHED_PID`<sup>1</sup>          | The PID part of the Schedule's URL            |
+|`SCHED_QUERY`<sup>1</sup>        | The Query part of the Schedule's URL          |
 |`UTC_OFFSET`         | Timezone offset to correct server time        |
+
+<sup>1</sup> The PID and Query exist as an Environmental variable since the value cannot be longer than 150 characters: Otherwise, Twilio will return a `runtime application timed out`.
+The URL had to be shortened in different parts.
 
 #### Dependencies
 | Package | Version | How is it being used in Beast Bot |
