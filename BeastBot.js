@@ -255,8 +255,7 @@ function sendLateness(twiml, callback, body, event) {
 
                         // Once completed, parse the results
                         console.log("Parsing complete: " + JSON.stringify(results.data), file);
-                        let arr_captains = [];
-                        let arr_captains_name = [];
+                        let arr_captains = [], arr_captains_name = [];
                         let obj_results, username, captain_username, phone;
 
                         // Distinguish user and captains
@@ -413,18 +412,12 @@ function sendInvite(twiml, callback, body, event) {
                 skipEmptyLines: true,
                 complete: function (results, file) {
                     console.log("Parsing complete: " + JSON.stringify(results.data), file);
-
-                    let arr_members = [], arr_phones = [], arr_usernames = [], obj_results, phone, isCaptain;
-
-                    // Prepend with country calling code
-                    body.slice(1).forEach((b) => {
-                        arr_phones.push(CONTEXT.COUNTRY_CALLING_CODE + b);
-                    })
+                    let arr_members = [], arr_usernames = [], obj_results, phone, isCaptain;
 
                     // Distinguish user and captains
                     results.data.forEach((d) => {
                         phone = decrypt(d.Phone);
-                        if (arr_phones.includes(phone)) {
+                        if (body.slice(1).includes(phone)) {
                             username = decrypt(d.Name);
                             obj_results = {};
                             obj_results.Phone = phone;
