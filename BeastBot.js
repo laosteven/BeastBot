@@ -381,9 +381,7 @@ function sendBroadcast(context, twiml, callback, body, event) {
                             }
                         });
 
-                        let body_msg = "Hello! This is " + context.BOT_NAME + ", your personal Dragonboat assistant.\n" +
-                            "If you do not recognize the sender or think this is a mistake, please ignore this message.\n\n" +
-                            "Start by saying 'Hello'!";
+                        let body_msg = getInviteMsg(context);
                         let body_feedback = 'Broadcast done';
 
                         arr_members.forEach((o) => {
@@ -425,11 +423,11 @@ function sendInvite(context, twiml, callback, body, event) {
                 complete: function (results, file) {
                     console.log("Parsing complete: " + JSON.stringify(results.data), file);
 
-                    let arr_members = [], arr_phones = [], obj_results, phone, isCaptain;
+                    let arr_members = [], arr_phones = [], arr_usernames = [], obj_results, phone, isCaptain;
 
-                    // Prepend with regional indicator
+                    // Prepend with country calling code
                     body.slice(1).forEach((b) => {
-                        arr_phones.push("+1" + b);
+                        arr_phones.push(context.COUNTRY_CALLING_CODE + b);
                     })
 
                     // Distinguish user and captains
@@ -438,8 +436,8 @@ function sendInvite(context, twiml, callback, body, event) {
                         if (arr_phones.includes(phone)) {
                             username = decrypt(context, d.Name);
                             obj_results = {};
-                            obj_results.Name = username;
                             obj_results.Phone = phone;
+                            arr_usernames.push(username);
                             arr_members.push(obj_results);
                         }
                         if (phone === event.From && d.IsCaptain === "☑") {
@@ -448,10 +446,8 @@ function sendInvite(context, twiml, callback, body, event) {
                     });
 
                     if (isCaptain) {
-                        let body_msg = "Hello! This is " + context.BOT_NAME + ", your personal Dragonboat assistant.\n" +
-                            "If you do not recognize the sender or think this is a mistake, please ignore this message.\n\n" +
-                            "Start by saying 'Hello'!";
-                        let body_feedback = 'Invite done: ' + arr_members;
+                        let body_msg = getInviteMsg(context);
+                        let body_feedback = 'Invite done: ' + arr_usernames;
 
                         arr_members.forEach((o) => {
                             context.getTwilioClient().messages.create({
@@ -502,4 +498,13 @@ function sendError(context, twiml, callback, error) {
     twiml.message("If the problem persist, send this to your team captain:");
     twiml.message(error.message);
     callback(null, twiml);
+}
+
+/****************************************************************************************************
+ * Messages
+ ****************************************************************************************************/
+function getInviteMsg(context) {
+    return "Hello! This is " + context.BOT_NAME + ", your personal Dragonboat assistant.\n\n" +
+        "If you do not recognize the sender or think this is a mistake, please ignore this message.\n\n" +
+        "Start by saying 'Hello'!";
 }
