@@ -17,6 +17,11 @@ const crypto = require('crypto');
 /****************************************************************************************************
  * Global
  ****************************************************************************************************/
+var CONTEXT;
+
+/****************************************************************************************************
+ * Debug
+ ****************************************************************************************************/
 var nb_request = 0;
 var nb_sched_req = 0;
 var nb_late_req = 0;
@@ -28,7 +33,8 @@ var history = [];
  ****************************************************************************************************/
 exports.handler = function (context, event, callback) {
 
-    startup(event, context);
+    CONTEXT = context;
+    debugStartup(event);
 
     // Prepare markup
     let twiml = new Twilio.twiml.MessagingResponse();
@@ -42,55 +48,55 @@ exports.handler = function (context, event, callback) {
             case 'f':
                 switch (body[1]) {
                     case 's':
-                        sendSchedule(context, twiml, callback, body);
+                        sendSchedule(twiml, callback, body);
                         break;
                     case 'l':
-                        sendLateness(context, twiml, callback, body, event);
+                        sendLateness(twiml, callback, body, event);
                         break;
                     case 'broadcast':
-                        sendBroadcast(context, twiml, callback, body, event);
+                        sendBroadcast(twiml, callback, body, event);
                         break;
                     default:
-                        sendHelp(context, twiml, callback);
+                        sendHelp(twiml, callback);
                         break;
                 }
                 break;
             case 't':
                 switch (body[1]) {
                     case 's':
-                        sendSchedule(context, twiml, callback, body);
+                        sendSchedule(twiml, callback, body);
                         break;
                     case 'l':
-                        sendLateness(context, twiml, callback, body, event);
+                        sendLateness(twiml, callback, body, event);
                         break;
                     case 'broadcast':
-                        sendBroadcast(context, twiml, callback, body, event);
+                        sendBroadcast(twiml, callback, body, event);
                         break;
                     default:
-                        sendHelp(context, twiml, callback);
+                        sendHelp(twiml, callback);
                         break;
                 }
                 break;
             case 'invite':
-                sendInvite(context, twiml, callback, body, event);
+                sendInvite(twiml, callback, body, event);
                 break;
             case 'n':
                 sendNudes(twiml, callback);
                 break;
             default:
-                sendHelp(context, twiml, callback);
+                sendHelp(twiml, callback);
                 break;
         }
     } catch (error) {
         console.log(error);
-        sendError(context, twiml, callback, error);
+        sendError(twiml, callback, error);
     }
 }
 
 /****************************************************************************************************
  * Startup
  ****************************************************************************************************/
-function startup(event, context) {
+function debugStartup(event) {
     nb_request++;
     console.log("Request total: " + nb_request);
 
@@ -98,7 +104,7 @@ function startup(event, context) {
     history.push({
         user: event.From,
         command: event.Body,
-        time: moment().utcOffset((-1) * context.UTC_OFFSET).format("YYYY-MM-D HH:mm:ss")
+        time: moment().utcOffset((-1) * CONTEXT.UTC_OFFSET).format("YYYY-MM-D HH:mm:ss")
     });
 
     // Show known last users
@@ -113,15 +119,15 @@ function startup(event, context) {
 /****************************************************************************************************
  * Schedule
  ****************************************************************************************************/
-function sendSchedule(context, twiml, callback, body) {
+function sendSchedule(twiml, callback, body) {
     nb_sched_req++;
     console.log("Schedule request #" + nb_sched_req);
 
     if (body[0]) {
         let url_schedule =
-            context.GOOGLE_SHEETS_URL +
-            context.SCHED_PID +
-            context.SCHED_QUERY;
+            CONTEXT.GOOGLE_SHEETS_URL +
+            CONTEXT.SCHED_PID +
+            CONTEXT.SCHED_QUERY;
 
         // Download the CSV file and analyze it
         fetch(url_schedule)
@@ -146,13 +152,13 @@ function sendSchedule(context, twiml, callback, body) {
                             obj_results.IsCancelled = d.IsCancelled;
                             obj_results.Description = d.Description;
 
-                            return d.Team == body[0] && moment().utcOffset((1) * context.UTC_OFFSET, true).isSameOrBefore(obj_results.DateTime);
+                            return d.Team == body[0] && moment().utcOffset((1) * CONTEXT.UTC_OFFSET, true).isSameOrBefore(obj_results.DateTime);
                         });
                         console.log(obj_results);
 
                         // Weather info
                         if (obj_results) {
-                            weather.find({ search: context.CITY, degreeType: context.DEGREE_TYPE }, function (err, result) {
+                            weather.find({ search: CONTEXT.CITY, degreeType: CONTEXT.DEGREE_TYPE }, function (err, result) {
                                 let weather_info;
                                 if (err) {
                                     console.log(err);
@@ -181,7 +187,7 @@ function sendSchedule(context, twiml, callback, body) {
                                                 " ~ " +
                                                 d.high +
                                                 "°" +
-                                                context.DEGREE_TYPE +
+                                                CONTEXT.DEGREE_TYPE +
                                                 ", " +
                                                 d.precip +
                                                 "%, " +
@@ -239,7 +245,7 @@ function sendSchedule(context, twiml, callback, body) {
 /****************************************************************************************************
  * Lateness
  ****************************************************************************************************/
-function sendLateness(context, twiml, callback, body, event) {
+function sendLateness(twiml, callback, body, event) {
     nb_late_req++;
     console.log("Lateness request #" + nb_late_req);
 
@@ -248,9 +254,9 @@ function sendLateness(context, twiml, callback, body, event) {
         // The URL cannot be shortened: `runtime application timed out`
         // Environment key cannot be longer than 150 characters
         let url_members =
-            context.GOOGLE_SHEETS_URL +
-            context.MEMBERS_PID +
-            context.MEMBERS_QUERY;
+            CONTEXT.GOOGLE_SHEETS_URL +
+            CONTEXT.MEMBERS_PID +
+            CONTEXT.MEMBERS_QUERY;
 
         fetch(url_members)
             .then((resp) => resp.text())
@@ -270,12 +276,12 @@ function sendLateness(context, twiml, callback, body, event) {
 
                         // Distinguish user and captains
                         results.data.forEach((d) => {
-                            phone = decrypt(context, d.Phone);
+                            phone = decrypt(d.Phone);
                             if (d.Team == body[0] && phone === event.From) {
-                                username = decrypt(context, d.Name);
+                                username = decrypt(d.Name);
                             }
                             if (d.Team == body[0] && d.IsCaptain === "☑") {
-                                captain_username = decrypt(context, d.Name);
+                                captain_username = decrypt(d.Name);
                                 obj_results = {};
                                 obj_results.Phone = phone;
                                 obj_results.Name = captain_username;
@@ -310,7 +316,7 @@ function sendLateness(context, twiml, callback, body, event) {
                         }
 
                         arr_captains.forEach((o) => {
-                            context.getTwilioClient().messages.create({
+                            CONTEXT.getTwilioClient().messages.create({
                                 from: event.To,
                                 to: o.Phone,
                                 body: body_msg
@@ -333,8 +339,8 @@ function sendLateness(context, twiml, callback, body, event) {
 /****************************************************************************************************
  * Decrypting sensitive information
  ****************************************************************************************************/
-function decrypt(context, text) {
-    var decipher = crypto.createDecipher(context.CRYPTO_ALGORITHM, context.ENCRYPT_KEY);
+function decrypt(text) {
+    var decipher = crypto.createDecipher(CONTEXT.CRYPTO_ALGORITHM, CONTEXT.ENCRYPT_KEY);
     var dec = decipher.update(text, 'hex', 'utf8');
     dec += decipher.final('utf8');
 
@@ -353,12 +359,12 @@ function sendNudes(twiml, callback) {
 /****************************************************************************************************
  * Broadcast
  ****************************************************************************************************/
-function sendBroadcast(context, twiml, callback, body, event) {
-    if (context.BROADCAST_ALLOWED) {
+function sendBroadcast(twiml, callback, body, event) {
+    if (CONTEXT.BROADCAST_ALLOWED) {
         let url_members =
-            context.GOOGLE_SHEETS_URL +
-            context.MEMBERS_PID +
-            context.MEMBERS_QUERY;
+            CONTEXT.GOOGLE_SHEETS_URL +
+            CONTEXT.MEMBERS_PID +
+            CONTEXT.MEMBERS_QUERY;
 
         fetch(url_members)
             .then((resp) => resp.text())
@@ -374,18 +380,18 @@ function sendBroadcast(context, twiml, callback, body, event) {
                         // Distinguish user and captains
                         results.data.forEach((d) => {
                             if (d.Team == body[0]) {
-                                phone = decrypt(context, d.Phone);
+                                phone = decrypt(d.Phone);
                                 obj_results = {};
                                 obj_results.Phone = phone;
                                 arr_members.push(obj_results);
                             }
                         });
 
-                        let body_msg = getInviteMsg(context);
+                        let body_msg = getInviteMsg();
                         let body_feedback = 'Broadcast done';
 
                         arr_members.forEach((o) => {
-                            context.getTwilioClient().messages.create({
+                            CONTEXT.getTwilioClient().messages.create({
                                 from: event.To,
                                 to: o.Phone,
                                 body: body_msg
@@ -399,19 +405,19 @@ function sendBroadcast(context, twiml, callback, body, event) {
             });
     }
     else {
-        sendHelp(context, twiml, callback);
+        sendHelp(twiml, callback);
     }
 }
 
 /****************************************************************************************************
  * Send welcoming message to new members joining during the season
  ****************************************************************************************************/
-function sendInvite(context, twiml, callback, body, event) {
+function sendInvite(twiml, callback, body, event) {
 
     let url_members =
-        context.GOOGLE_SHEETS_URL +
-        context.MEMBERS_PID +
-        context.MEMBERS_QUERY;
+        CONTEXT.GOOGLE_SHEETS_URL +
+        CONTEXT.MEMBERS_PID +
+        CONTEXT.MEMBERS_QUERY;
 
     fetch(url_members)
         .then((resp) => resp.text())
@@ -427,14 +433,14 @@ function sendInvite(context, twiml, callback, body, event) {
 
                     // Prepend with country calling code
                     body.slice(1).forEach((b) => {
-                        arr_phones.push(context.COUNTRY_CALLING_CODE + b);
+                        arr_phones.push(CONTEXT.COUNTRY_CALLING_CODE + b);
                     })
 
                     // Distinguish user and captains
                     results.data.forEach((d) => {
-                        phone = decrypt(context, d.Phone);
+                        phone = decrypt(d.Phone);
                         if (arr_phones.includes(phone)) {
-                            username = decrypt(context, d.Name);
+                            username = decrypt(d.Name);
                             obj_results = {};
                             obj_results.Phone = phone;
                             arr_usernames.push(username);
@@ -446,11 +452,11 @@ function sendInvite(context, twiml, callback, body, event) {
                     });
 
                     if (isCaptain) {
-                        let body_msg = getInviteMsg(context);
+                        let body_msg = getInviteMsg();
                         let body_feedback = 'Invite done: ' + arr_usernames;
 
                         arr_members.forEach((o) => {
-                            context.getTwilioClient().messages.create({
+                            CONTEXT.getTwilioClient().messages.create({
                                 from: event.To,
                                 to: o.Phone,
                                 body: body_msg
@@ -473,26 +479,25 @@ function sendInvite(context, twiml, callback, body, event) {
 /****************************************************************************************************
  * Help
  ****************************************************************************************************/
-function sendHelp(context, twiml, callback) {
+function sendHelp(twiml, callback) {
     nb_help_req++;
     console.log("Help request #" + nb_help_req);
 
-    twiml.message("Welcome to " + context.BOT_NAME + "!\n" +
+    twiml.message("Welcome to " + CONTEXT.BOT_NAME + "!\n" +
         "The available commands are:\n" +
         "• 'T S' for 'S'chedule;\n" +
         "• 'T L' for 'L'ate + [?]:\n" +
         "   • \"T L 15\" for 15mins late;\n" +
         "   • \"T L absent\" for absence.\n" +
-        "T: 1st letter of your 'T'eam\n\n" +
-        "Example: 'T S' or 'T L 15'");
+        "T: 1st letter of your 'T'eam");
     callback(null, twiml);
 }
 
 /****************************************************************************************************
  * Error
  ****************************************************************************************************/
-function sendError(context, twiml, callback, error) {
-    twiml.message("Oh no! " + context.BOT_NAME + " could not understand your message.\n" +
+function sendError(twiml, callback, error) {
+    twiml.message("Oh no! " + CONTEXT.BOT_NAME + " could not understand your message.\n" +
         "Please try sending your command again.\n" +
         "Example: 'T S' or 'T L 15'");
     twiml.message("If the problem persist, send this to your team captain:");
@@ -503,8 +508,8 @@ function sendError(context, twiml, callback, error) {
 /****************************************************************************************************
  * Messages
  ****************************************************************************************************/
-function getInviteMsg(context) {
-    return "Hello! This is " + context.BOT_NAME + ", your personal Dragonboat assistant.\n\n" +
+function getInviteMsg() {
+    return "Hello! This is " + CONTEXT.BOT_NAME + ", your personal Dragonboat assistant.\n\n" +
         "If you do not recognize the sender or think this is a mistake, please ignore this message.\n\n" +
         "Start by saying 'Hello'!";
 }
