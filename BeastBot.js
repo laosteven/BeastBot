@@ -71,6 +71,9 @@ exports.handler = function (context, event, callback) {
                         break;
                 }
                 break;
+            case 'invite':
+                sendInvite(context, twiml, callback, body, event);
+                break;
             case 'n':
                 sendNudes(twiml, callback);
                 break;
@@ -284,6 +287,7 @@ function sendLateness(context, twiml, callback, body, event) {
                         let body_msg = '';
                         let body_feedback = '';
                         if (body[2] === 'absent' && username && arr_captains.length > 0) {
+                            // Absence
                             body_msg = username + " will be absent.";
                             body_feedback = "Acknowledged: absence.\n" +
                                 "The captains of your team (" +
@@ -291,6 +295,7 @@ function sendLateness(context, twiml, callback, body, event) {
                                 ") have been notified."
                         }
                         else if (body[2] > 0 && body[2] <= 60 && username && arr_captains.length > 0) {
+                            // Late
                             body_msg = username + " will be " + body[2] + " minutes late.";
                             body_feedback = "Acknowledged: " + body[2] + " minutes.\n" +
                                 "The captains of your team (" +
@@ -298,6 +303,7 @@ function sendLateness(context, twiml, callback, body, event) {
                                 ") have been notified."
                         }
                         else {
+                            // Unregistered number
                             twiml.message("Your number is not registered.\n" +
                                 "Please contact your captains as soon as possible.");
                             callback(null, twiml);
@@ -308,7 +314,7 @@ function sendLateness(context, twiml, callback, body, event) {
                                 from: event.To,
                                 to: o.Phone,
                                 body: body_msg
-                            }, function (err, result) {
+                            }, function () {
                                 twiml.message(body_feedback);
                                 callback(null, twiml);
                             });
@@ -385,7 +391,7 @@ function sendBroadcast(context, twiml, callback, body, event) {
                                 from: event.To,
                                 to: o.Phone,
                                 body: body_msg
-                            }, function (err, result) {
+                            }, function () {
                                 twiml.message(body_feedback);
                                 callback(null, twiml);
                             });
@@ -397,6 +403,75 @@ function sendBroadcast(context, twiml, callback, body, event) {
     else {
         sendHelp(context, twiml, callback);
     }
+}
+
+/****************************************************************************************************
+ * Send welcoming message to new members joining during the season
+ ****************************************************************************************************/
+function sendInvite(context, twiml, callback, body, event) {
+
+    let url_members =
+        context.GOOGLE_SHEETS_URL +
+        context.MEMBERS_PID +
+        context.MEMBERS_QUERY;
+
+    fetch(url_members)
+        .then((resp) => resp.text())
+        .then(function (data) {
+
+            Papa.parse(data, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function (results, file) {
+                    console.log("Parsing complete: " + JSON.stringify(results.data), file);
+
+                    let arr_members = [], arr_phones = [], obj_results, phone, isCaptain;
+
+                    // Prepend with regional indicator
+                    body.slice(1).forEach((b) => {
+                        arr_phones.push("+1" + b);
+                    })
+
+                    // Distinguish user and captains
+                    results.data.forEach((d) => {
+                        phone = decrypt(context, d.Phone);
+                        if (arr_phones.includes(phone)) {
+                            username = decrypt(context, d.Name);
+                            obj_results = {};
+                            obj_results.Name = username;
+                            obj_results.Phone = phone;
+                            arr_members.push(obj_results);
+                        }
+                        if (phone === event.From && d.IsCaptain === "☑") {
+                            isCaptain = true;
+                        }
+                    });
+
+                    if (isCaptain) {
+                        let body_msg = "Hello! This is " + context.BOT_NAME + ", your personal Dragonboat assistant.\n" +
+                            "If you do not recognize the sender or think this is a mistake, please ignore this message.\n\n" +
+                            "Start by saying 'Hello'!";
+                        let body_feedback = 'Invite done: ' + arr_members;
+
+                        arr_members.forEach((o) => {
+                            context.getTwilioClient().messages.create({
+                                from: event.To,
+                                to: o.Phone,
+                                body: body_msg
+                            }, function () {
+                                twiml.message(body_feedback);
+                                callback(null, twiml);
+                            });
+                        });
+                    }
+                    else {
+                        // Not allowed
+                        twiml.message("This command is only available for captains.");
+                        callback(null, twiml);
+                    }
+                }
+            });
+        });
 }
 
 /****************************************************************************************************
